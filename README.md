@@ -26,29 +26,34 @@ A lightweight development server with live reload capabilities for Sublime Text.
 
 ## Usage
 
-### Basic Commands
-
-- Toggle Server: `Alt+S`
-- Open Current File in Browser: `Alt+Shift+S` (Mac) / `Alt+Shift+S` (Windows/Linux)
-
 ### From Command Palette
 
 1. Open Command Palette (Cmd/Ctrl + Shift + P)
 2. Available commands:
-   - "Start Server: Toggle"
-   - "Start Server: Custom Port"
-   - "Start Server: Open Current File"
+   - "Start Server: Toggle" - Start/Stop the server
+   - "Start Server: Custom Port" - Start server on a specific port
+   - "Start Server: Open Current File" - Open current file in browser
 
-### From Tools Menu
+### Optional Key Bindings
 
-Find the Start Server submenu in the Tools menu with options to:
-- Toggle server
-- Choose custom port
-- Open current file
+You can add keyboard shortcuts by creating a custom key binding file. Here's a suggested configuration:
+
+```json
+[
+    { 
+        "keys": ["alt+s"], 
+        "command": "toggle_start_server"
+    },
+    { 
+        "keys": ["alt+shift+s"], 
+        "command": "open_current_file_start_server"
+    }
+]
+```
 
 ## Settings
 
-Default settings can be modified via `Preferences > Package Settings > StartServer > Settings`:
+Customize settings in `Preferences > Package Settings > StartServer > Settings`:
 
 ```json
 {
@@ -60,19 +65,19 @@ Default settings can be modified via `Preferences > Package Settings > StartServ
 
 ## Features
 
-- **Live Reload**: 
-  - Auto-refreshes browser on file changes
-  - Watches HTML, CSS, and JavaScript files
-  - Real-time WebSocket communication
+### Live Reload
+- Auto-refreshes browser on file changes
+- Watches HTML, CSS, and JavaScript files
+- Real-time WebSocket communication
 
-- **Multi-Folder Support**:
-  - Serves files from all open project folders
-  - Smart file watching across directories
+### Multi-Folder Support
+- Serves files from all open project folders
+- Smart file watching across directories
 
-- **Status Bar Integration**:
-  - Shows server status
-  - Displays current port
-  - Indicates connected clients
+### Status Bar Integration
+- Shows server status
+- Displays current port
+- Indicates connected clients
 
 ## Requirements
 
@@ -93,7 +98,3 @@ If you encounter any issues or have suggestions:
    - Operating System
    - Steps to reproduce
    - Expected vs actual behavior
-
-## Credits
-
-Developed by Frederico
