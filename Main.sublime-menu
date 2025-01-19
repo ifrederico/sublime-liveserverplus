@@ -1,0 +1,25 @@
+// Main.sublime-menu
+[
+    {
+        "id": "tools",
+        "children": [
+            { "caption": "-" },
+            {
+                "caption": "Start Server",
+                "children": [
+                    {
+                        // Use empty caption => Sublime calls description()
+                        "command": "toggle_start_server",
+                        "caption": ""
+                    },
+                    {
+                        // "Open Current File" command,
+                        // only visible if server is running with a valid file
+                        "command": "open_current_file_start_server",
+                        "caption": "Open Current File"
+                    }
+                ]
+            }
+        ]
+    }
+]
