@@ -1,22 +1,55 @@
-// Main.sublime-menu
 [
     {
         "id": "tools",
         "children": [
-            { "caption": "-" },
             {
-                "caption": "Start Server",
+                "id": "liveserverplus",
+                "caption": "Live Server Plus",
                 "children": [
                     {
-                        // Use empty caption => Sublime calls description()
-                        "command": "toggle_start_server",
-                        "caption": ""
+                        "caption": "Start Server",
+                        "command": "start_server"
                     },
                     {
-                        // "Open Current File" command,
-                        // only visible if server is running with a valid file
-                        "command": "open_current_file_start_server",
-                        "caption": "Open Current File"
+                        "caption": "Stop Server",
+                        "command": "stop_server"
+                    },
+                    { "caption": "-" },
+                    {
+                        "caption": "Open Current File",
+                        "command": "open_current_file_start_server"
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "preferences",
+        "children": [
+            {
+                "id": "package-settings",
+                "children": [
+                    {
+                        "caption": "Live Server Plus",
+                        "children": [
+                            {
+                                "caption": "Settings",
+                                "command": "edit_settings",
+                                "args": {
+                                    "base_file": "${packages}/LiveServerPlus/LiveServerPlus.sublime-settings",
+                                    "default": "// Live Server Plus Settings - User\n{\n\t$0\n}\n"
+                                }
+                            },
+                            { "caption": "-" },
+                            {
+                                "caption": "Key Bindings",
+                                "command": "edit_settings",
+                                "args": {
+                                    "base_file": "${packages}/LiveServerPlus/Default (${platform}).sublime-keymap",
+                                    "default": "[\n\t$0\n]\n"
+                                }
+                            }
+                        ]
                     }
                 ]
             }

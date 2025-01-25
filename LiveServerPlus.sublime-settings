@@ -1,0 +1,75 @@
+{
+    // Server Settings
+    "host": "localhost",
+    "port": 5500,
+    
+    // File Watcher Settings
+    "poll_interval": 1.0,
+    "ignore_dirs": [
+        "node_modules",
+        ".git",
+        "__pycache__",
+        ".svn",
+        ".hg",
+        ".sass-cache",
+        ".pytest_cache",
+        "dist",           // Added: common build directory
+        "build",          // Added: common build directory
+        "coverage",       // Added: test coverage reports
+        ".next",          // Added: Next.js build
+        ".nuxt"          // Added: Nuxt.js build
+    ],
+    
+    // Browser Settings
+    "open_browser_on_start": true,
+    "browser": "",    // Empty for default, or "chrome", "firefox", "safari", "edge"
+    
+    // File Types
+    "allowed_file_types": [
+        // Core Web
+        ".html", ".htm", ".css", ".js", ".mjs",
+        
+        // Modern JavaScript/TypeScript
+        ".jsx", ".tsx", ".ts", ".vue", ".svelte",
+        
+        // Style Extensions
+        ".scss", ".sass", ".less", ".postcss",
+        
+        // Images
+        ".jpg", ".jpeg", ".png", ".gif", ".svg",
+        ".ico", ".webp", ".avif",
+        
+        // Fonts
+        ".woff", ".woff2", ".ttf", ".eot",
+        
+        // Media
+        ".mp4", ".webm", ".ogg", ".mp3", ".wav",
+        
+        // Documents
+        ".pdf", ".json", ".xml",
+        
+        // Development
+        ".map", ".md"
+    ],
+    
+    // Performance Settings
+    "max_file_size": 100,        // Maximum file size in MB
+    "enable_compression": true,   // Enable GZIP compression
+    
+    // UI Settings
+    "status_bar_enabled": true,   // Show server status in status bar
+    
+    // Advanced Settings
+    "cors_enabled": false,        // Enable CORS headers for API development
+    
+    // Live Reload Settings
+    "live_reload": {
+        "enabled": true,          // Enable live reload
+        "css_injection": true,    // Use CSS injection instead of page reload
+        "delay": 0,              // Delay before reload in milliseconds
+        "ignore_exts": [         // File extensions to ignore for live reload
+            ".log",
+            ".map"
+        ]
+    }
+}

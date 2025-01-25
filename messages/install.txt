@@ -1,0 +1,18 @@
+Thank you for installing StartServer!
+
+Start using the package:
+1. Open a folder with your web files
+2. Open Command Palette (Cmd/Ctrl + Shift + P)
+3. Type "Start Server" and press Enter
+
+Available Commands:
+- "Start Server" - Starts/Stops the server
+- "Start Server: Open Current File" - Opens current file in browser
+- "Start Server: Settings" - Customize settings
+
+The status bar will show when the server is running and on which port.
+
+For more information, visit:
+https://github.com/ifrederico/sublime-text-start-server
+
+Enjoy!

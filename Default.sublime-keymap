@@ -1,0 +1,17 @@
+[
+    { 
+        "keys": ["alt+s"], 
+        "command": "start_server",
+        "description": "Start Server"
+    },
+    { 
+        "keys": ["alt+shift+s"], 
+        "command": "stop_server",
+        "description": "Stop Server"
+    },
+    {
+        "keys": ["alt+o"],
+        "command": "open_current_file_start_server",
+        "description": "Open Current File in Server"
+    }
+]

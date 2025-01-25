@@ -1,4 +1,4 @@
-# StartServer for Sublime Text
+# LiveServerPlus for Sublime Text
 
 A lightweight development server with live reload capabilities for Sublime Text. Perfect for web development with automatic browser refresh on file changes.
 
@@ -16,7 +16,7 @@ A lightweight development server with live reload capabilities for Sublime Text.
 
 1. Open Command Palette (Cmd/Ctrl + Shift + P)
 2. Select "Package Control: Install Package"
-3. Search for "StartServer"
+3. Search for "LiveServerPlus"
 
 ### Manual Installation
 
@@ -30,9 +30,9 @@ A lightweight development server with live reload capabilities for Sublime Text.
 
 1. Open Command Palette (Cmd/Ctrl + Shift + P)
 2. Available commands:
-   - "Start Server: Toggle" - Start/Stop the server
-   - "Start Server: Custom Port" - Start server on a specific port
-   - "Start Server: Open Current File" - Open current file in browser
+   - "Live Server Plus: Toggle" - Start/Stop the server
+   - "Live Server Plus: Custom Port" - Start server on a specific port
+   - "Live Server Plus: Open Current File" - Open current file in browser
 
 ### Optional Key Bindings
 
@@ -57,9 +57,9 @@ Customize settings in `Preferences > Package Settings > StartServer > Settings`:
 
 ```json
 {
-    "port": 8080,
+    "port": 550,
     "poll_interval": 1.0,
-    "open_browser_on_start": true
+    "browser": "",    // Empty for default, or "chrome", "firefox", "safari", "edge"
 }
 ```
 
