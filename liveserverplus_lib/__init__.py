@@ -1,7 +1,7 @@
 # __init__.py
 
 """
-StartServer package initialization.
+LiveServerPlus package initialization.
 Core classes and utilities for running a development server in Sublime Text.
 """
 

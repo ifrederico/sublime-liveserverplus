@@ -2,20 +2,11 @@ import sublime
 import sublime_plugin
 import webbrowser
 import os
-import sys
 from pathlib import Path
 
-# Add the directory containing this file to Python's import path
-PACKAGE_PATH = os.path.dirname(os.path.abspath(__file__))
-if PACKAGE_PATH not in sys.path:
-    sys.path.insert(0, PACKAGE_PATH)
-
-try:
-    from .liveserverplus_lib.server import Server
-    from .liveserverplus_lib.utils import open_in_browser
-except ImportError:
-    from liveserverplus_lib.server import Server
-    from liveserverplus_lib.utils import open_in_browser
+# Direct relative imports from the subpackage
+from .liveserverplus_lib.server import Server
+from .liveserverplus_lib.utils import open_in_browser
 
 # Global server instance
 server_instance = None
@@ -25,8 +16,8 @@ def is_server_running():
     global server_instance
     return server_instance is not None and server_instance.is_alive()
 
-def start_server(folders):
-    """Start the server with given folders"""
+def live_server_start(folders):
+    """Start the live server with given folders"""
     global server_instance
     
     if is_server_running():
@@ -41,8 +32,8 @@ def start_server(folders):
         server_instance = None
         return False
 
-def stop_server():
-    """Stop the running server"""
+def live_server_stop():
+    """Stop the running live server"""
     global server_instance
     
     if server_instance and server_instance.is_alive():
@@ -52,24 +43,21 @@ def stop_server():
     return False
 
 def is_file_allowed(file_path):
-    """Check if file type is allowed"""
+    """Check if file type is allowed by the server settings"""
     if not server_instance:
         return False
     ext = os.path.splitext(file_path)[1].lower()
     return any(ext == allowed_ext.lower() 
               for allowed_ext in server_instance.settings.allowed_file_types)
 
-class StartServerCommand(sublime_plugin.WindowCommand):
-    """Command to start the server"""
+class LiveServerStartCommand(sublime_plugin.WindowCommand):
+    """Command to start the Live Server"""
     
     def run(self):
-        global server_instance
-        
         if is_server_running():
-            sublime.status_message("Server is already running")
+            sublime.status_message("Live Server is already running")
             return
             
-        # Check if we have an active file first
         view = self.window.active_view()
         file_path = view.file_name() if view else None
         
@@ -86,10 +74,8 @@ class StartServerCommand(sublime_plugin.WindowCommand):
             return
             
         # Start the server
-        if start_server(folders):
-            # If server started successfully and instance exists
+        if live_server_start(folders):
             if server_instance and server_instance.settings.browser_open_on_start:
-                # Always open the root directory
                 url = f"http://{server_instance.settings.host}:{server_instance.settings.port}/"
                 browser = server_instance.settings.browser
                 open_in_browser(url, browser)
@@ -97,26 +83,26 @@ class StartServerCommand(sublime_plugin.WindowCommand):
     def is_enabled(self):
         return not is_server_running()
 
-class StopServerCommand(sublime_plugin.WindowCommand):
-    """Command to stop the server"""
+class LiveServerStopCommand(sublime_plugin.WindowCommand):
+    """Command to stop the Live Server"""
     
     def run(self):
         if not is_server_running():
-            sublime.status_message("Server is not running")
+            sublime.status_message("Live Server is not running")
             return
             
-        if stop_server():
-            sublime.status_message("Server stopped")
+        if live_server_stop():
+            sublime.status_message("Live Server stopped")
             
     def is_enabled(self):
         return is_server_running()
 
-class OpenCurrentFileStartServerCommand(sublime_plugin.WindowCommand):
-    """Command to open current file in browser"""
+class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
+    """Command to open the current file in the browser (via Live Server)"""
     
     def run(self):
         if not is_server_running():
-            sublime.status_message("Server is not running")
+            sublime.status_message("Live Server is not running")
             return
             
         view = self.window.active_view()
@@ -153,15 +139,16 @@ class OpenCurrentFileStartServerCommand(sublime_plugin.WindowCommand):
         open_in_browser(url, browser)
         
     def is_enabled(self):
-        return (is_server_running() and 
-                bool(self.window.active_view() and 
-                     self.window.active_view().file_name()))
+        return (
+            is_server_running() and 
+            bool(self.window.active_view() and self.window.active_view().file_name())
+        )
 
 def plugin_loaded():
-    """Called by Sublime Text when plugin is loaded"""
+    """Called by Sublime Text when plugin is loaded."""
     pass
 
 def plugin_unloaded():
-    """Called by Sublime Text when plugin is unloaded"""
+    """Called by Sublime Text when plugin is unloaded."""
     if is_server_running():
-        stop_server()
+        live_server_stop()

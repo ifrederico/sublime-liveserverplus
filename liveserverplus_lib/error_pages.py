@@ -5,6 +5,26 @@ from .directory_listing import DirectoryListing
 
 class ErrorPages:
     """Handles custom error pages"""
+
+    @staticmethod
+    def get_base_styles():
+        return """
+            h1 { color: #e74c3c; margin-bottom: 10px; }
+
+                .directory {
+                    background: #f8f9fa; 
+                    border-radius: 4px; 
+                    padding: 20px; 
+                    margin: 20px 0; 
+                }
+
+                .suggestion { 
+                    background: #fff3cd; 
+                    padding: 10px; 
+                    border-radius: 4px; 
+                    margin: 10px 0; 
+                }
+        """
     
     @staticmethod
     def get_404_page(path, folders):
@@ -18,19 +38,6 @@ class ErrorPages:
             <title>404 - Not Found</title>
             <style>
                 {DirectoryListing.get_base_styles()}
-                h1 {{ color: #e74c3c; margin-bottom: 10px; }}
-                .directory {{ 
-                    background: #f8f9fa; 
-                    border-radius: 4px; 
-                    padding: 20px; 
-                    margin: 20px 0; 
-                }}
-                .suggestion {{ 
-                    background: #fff3cd; 
-                    padding: 10px; 
-                    border-radius: 4px; 
-                    margin: 10px 0; 
-                }}
             </style>
         </head>
         <body>

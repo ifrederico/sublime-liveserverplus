@@ -9,8 +9,9 @@ class ServerSettings:
         
     def load_settings(self):
         """Load settings from sublime-settings file"""
-        self._settings = sublime.load_settings("StartServer.sublime-settings")
-        self._settings.add_on_change('start_server', self.on_settings_change)
+        self._settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+        # Changed the key here to avoid referencing "start_server"
+        self._settings.add_on_change('live_server_settings', self.on_settings_change)
         
     def on_settings_change(self):
         """Handle settings changes"""

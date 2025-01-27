@@ -2,6 +2,9 @@
 import os
 from datetime import datetime
 from typing import Dict, List, Any
+import sublime
+from string import Template
+
 
 class DirectoryListing:
     """Handles directory listing pages"""
@@ -50,66 +53,18 @@ class DirectoryListing:
         '.mov': '🎬'
     }
 
-    @staticmethod
-    def get_base_styles() -> str:
-        """Get common CSS styles for directory listings"""
-        return """
-            body { 
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-                line-height: 1.6;
-                max-width: 1200px;
-                margin: 20px auto;
-                padding: 0 20px;
-                color: #333;
-            }
-            h1 { color: #2c3e50; margin-bottom: 20px; }
-            .directory-path {
-                background: #f8f9fa;
-                padding: 10px;
-                border-radius: 4px;
-                margin-bottom: 20px;
-                font-family: monospace;
-            }
-            table { 
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 20px;
-            }
-            th, td { 
-                padding: 12px;
-                text-align: left;
-                border-bottom: 1px solid #eee;
-            }
-            th { 
-                background: #f8f9fa;
-                color: #666;
-                font-weight: 500;
-            }
-            td { vertical-align: middle; }
-            a { 
-                color: #3498db;
-                text-decoration: none;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            a:hover { color: #2980b9; }
-            .size { width: 100px; text-align: right; }
-            .modified { width: 200px; }
-            .icon { font-size: 1.2em; }
-            tr:hover { background: #f8f9fa; }
-            .parent-link {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                padding: 8px 16px;
-                background: #eee;
-                border-radius: 4px;
-                margin-bottom: 20px;
-            }"""
-
-    @staticmethod
-    def get_file_info(path: str, entry: os.DirEntry = None) -> Dict[str, Any]:
+    def __init__(self, settings=None):
+        self.settings = settings
+        try:
+            # Must match your actual package and folder names:
+            resource_path = "Packages/LiveServerPlus/liveserverplus_lib/templates/directory_listing.html"
+            raw_template = sublime.load_resource(resource_path)
+            self.template = raw_template
+        except Exception as e:
+            print(f"Error loading template: {e}")
+            self.template = "<html><body>Error loading template</body></html>"
+        
+    def get_file_info(self, path: str, entry: os.DirEntry = None) -> Dict[str, Any]:
         """Get standardized file information"""
         try:
             if entry:
@@ -127,23 +82,22 @@ class DirectoryListing:
                     'icon': "📁",
                     'type': "directory",
                     'size': "-",
-                    'modified': datetime.fromtimestamp(stat_info.st_mtime)
+                    'modified': datetime.fromtimestamp(stat_info.st_mtime).strftime('%Y-%m-%d %H:%M')
                 }
             else:
                 ext = os.path.splitext(name)[1].lower()
                 return {
                     'name': name,
-                    'icon': DirectoryListing.ICONS.get(ext, '📄'),
+                    'icon': self.ICONS.get(ext, '📄'),
                     'type': "file",
-                    'size': DirectoryListing._format_size(stat_info.st_size),
-                    'modified': datetime.fromtimestamp(stat_info.st_mtime)
+                    'size': self._format_size(stat_info.st_size),
+                    'modified': datetime.fromtimestamp(stat_info.st_mtime).strftime('%Y-%m-%d %H:%M')
                 }
         except Exception as e:
             print(f"Error getting file info for {path}: {e}")
             return None
 
-    @staticmethod
-    def generate_items_list(dir_path: str, include_hidden: bool = False) -> List[Dict[str, Any]]:
+    def generate_items_list(self, dir_path: str, include_hidden: bool = False) -> List[Dict[str, Any]]:
         """Generate list of directory items with consistent formatting"""
         items = []
         try:
@@ -151,7 +105,7 @@ class DirectoryListing:
                 for entry in entries:
                     if not include_hidden and entry.name.startswith('.'):
                         continue
-                    file_info = DirectoryListing.get_file_info(entry.path, entry)
+                    file_info = self.get_file_info(entry.path, entry)
                     if file_info:
                         items.append(file_info)
             
@@ -161,79 +115,68 @@ class DirectoryListing:
             print(f"Error generating items list for {dir_path}: {e}")
             return []
 
-    @staticmethod
-    def generate_table_html(items: List[Dict[str, Any]], url_path: str) -> str:
-        """Generate HTML table for directory items"""
-        html = """
-            <table>
-                <thead>
-                    <tr>
-                        <th colspan="2">Name</th>
-                        <th class="size">Size</th>
-                        <th class="modified">Last Modified</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
-        
-        for item in items:
-            item_path = os.path.join(url_path, item['name']).replace('\\', '/')
-            if item['type'] == 'directory':
-                item_path += '/'
-            
-            html += f"""
-                <tr>
-                    <td style="width: 40px"><div class="icon">{item['icon']}</div></td>
-                    <td><a href="{item_path}">{item['name']}</a></td>
-                    <td class="size">{item['size']}</td>
-                    <td class="modified">{item['modified'].strftime('%Y-%m-%d %H:%M')}</td>
-                </tr>
-            """
-        
-        html += """
-                </tbody>
-            </table>
-        """
-        return html
-
-    @staticmethod
-    def generate_listing(dir_path: str, url_path: str, root_path: str) -> bytes:
+    def generate_listing(self, dir_path: str, url_path: str, root_path: str) -> bytes:
         """Generate complete directory listing page"""
         try:
-            items = DirectoryListing.generate_items_list(dir_path)
+            items = self.generate_items_list(dir_path)
             
-            html = f"""
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Directory: {url_path}</title>
-                <style>
-                    {DirectoryListing.get_base_styles()}
-                </style>
-            </head>
-            <body>
-                <h1>Directory Listing</h1>
-                <div class="directory-path">{url_path}</div>
-            """
-            
-            # Add parent directory link if not at root
+            # Add URL paths to items
+            for item in items:
+                item_path = os.path.join(url_path, item['name']).replace('\\', '/')
+                if item['type'] == 'directory':
+                    item_path += '/'
+                item['url'] = item_path
+
+            # Create parent link HTML if not at root
+            parent_link = ''
             if url_path != '/':
                 parent = os.path.dirname(url_path.rstrip('/'))
-                html += f'<a href="{parent or "/"}" class="parent-link">📁 Parent Directory</a>'
-            
-            html += DirectoryListing.generate_table_html(items, url_path)
-            
-            html += """
-            </body>
-            </html>
-            """
+                parent_path = parent or "/"
+                parent_link = f'''
+                    <a href="{parent_path}" class="parent-link">
+                        <span class="icon">📁</span>
+                        Parent Directory
+                    </a>
+                '''
+
+            # Generate items HTML
+            items_html = ''.join(self._generate_item_html(item) for item in items)
+
+            # Simple template substitution
+            template = Template(self.template)
+            html = template.safe_substitute(
+                path=url_path,
+                parent_link=parent_link,
+                items=items_html
+            )
             
             return html.encode('utf-8')
             
         except Exception as e:
             return f"<p>Error reading directory: {e}</p>".encode('utf-8')
+            
+    def _generate_item_html(self, item: Dict[str, Any]) -> str:
+        """Generate HTML for a single item row"""
+        # Only add download attribute for non-allowed files that are not directories
+        ext = os.path.splitext(item['name'])[1].lower()
+        is_allowed = any(ext == allowed_ext.lower() 
+                        for allowed_ext in (self.settings.allowed_file_types if self.settings else []))
+        
+        # Only add download attribute if it's a file (not a directory) and not allowed
+        download_attr = ' download' if not is_allowed and item['type'] != 'directory' else ''
+        
+        return f"""
+            <tr>
+                <td style="width: 40px">
+                    <div class="icon">{item['icon']}</div>
+                </td>
+                <td>
+                    <a href="{item['url']}"{download_attr}>{item['name']}</a>
+                </td>
+                <td class="size">{item['size']}</td>
+                <td class="modified">{item['modified']}</td>
+            </tr>
+        """
 
     @staticmethod
     def _format_size(size: int) -> str:

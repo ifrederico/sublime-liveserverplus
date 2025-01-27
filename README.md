@@ -41,11 +41,11 @@ You can add keyboard shortcuts by creating a custom key binding file. Here's a s
 ```json
 [
     { 
-        "keys": ["alt+s"], 
+        "keys": ["alt+shift+s"], 
         "command": "toggle_start_server"
     },
     { 
-        "keys": ["alt+shift+s"], 
+        "keys": ["alt+shift+o"], 
         "command": "open_current_file_start_server"
     }
 ]
@@ -57,7 +57,7 @@ Customize settings in `Preferences > Package Settings > StartServer > Settings`:
 
 ```json
 {
-    "port": 550,
+    "port": 5500,
     "poll_interval": 1.0,
     "browser": "",    // Empty for default, or "chrome", "firefox", "safari", "edge"
 }
@@ -92,7 +92,7 @@ MIT License - see LICENSE file for details.
 
 If you encounter any issues or have suggestions:
 
-1. Check the [Issues](https://github.com/ifrederico/sublime-text-start-server/issues) page
+1. Check the [Issues](https://github.com/ifrederico/sublime-liveserverplus/issues) page
 2. Create a new issue with:
    - Sublime Text version
    - Operating System

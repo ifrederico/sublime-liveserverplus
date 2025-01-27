@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Directory: $path</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            outline: 0;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            line-height: 1.6;
+            padding: 40px;
+            color: #333;
+            background: #ECE9E9 -webkit-gradient(linear, 0% 0%, 0% 100%, from(#fff), to(#ECE9E9));
+            background: #ECE9E9 -moz-linear-gradient(top, #fff, #ECE9E9);
+            background-repeat: no-repeat;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #wrapper {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        }
+
+        h1 { 
+            color: #2c3e50; 
+            margin-bottom: 20px;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .directory-path {
+            background: #f8f9fa;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            border: 1px solid #eee;
+        }
+
+        #search {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .files-container {
+            border: 1px solid #eee;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        table { 
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td { 
+            padding: 14px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        th { 
+            background: #f8f9fa;
+            color: #666;
+            font-weight: 500;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td { 
+            vertical-align: middle;
+        }
+
+        a { 
+            color: #3498db;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        a:hover { 
+            color: #2980b9;
+        }
+
+        .size { 
+            width: 100px; 
+            text-align: right;
+            color: #666;
+        }
+
+        .modified { 
+            width: 200px;
+            color: #666;
+        }
+
+        .icon { 
+            font-size: 1.2em;
+            min-width: 24px;
+            text-align: center;
+        }
+
+        tr:hover { 
+            background: #f8f9fa;
+        }
+
+        .parent-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #eee;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .parent-link:hover {
+            background: #eee;
+        }
+
+        .highlight {
+            background: #fff3cd;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 20px;
+            }
+
+            #wrapper {
+                padding: 20px;
+            }
+
+            .modified {
+                display: none;
+            }
+
+            .size {
+                width: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="wrapper">
+        <h1>
+            <span class="icon">📂</span>
+            Directory Listing
+        </h1>
+        <div class="directory-path">$path</div>
+        
+        <input type="text" id="search" placeholder="Search files..." autocomplete="off">
+        
+        $parent_link
+        
+        <div class="files-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th colspan="2">Name</th>
+                        <th class="size">Size</th>
+                        <th class="modified">Last Modified</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    $items
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function search() {
+            const searchTerm = document.getElementById('search').value.toLowerCase();
+            const rows = document.querySelectorAll('tbody tr');
+            
+            rows.forEach(row => {
+                const nameCell = row.querySelector('td:nth-child(2)');
+                const fileName = nameCell.textContent.toLowerCase();
+                
+                if (searchTerm === '' || fileName.includes(searchTerm)) {
+                    row.style.display = '';
+                    if (searchTerm !== '' && fileName.includes(searchTerm)) {
+                        row.classList.add('highlight');
+                    } else {
+                        row.classList.remove('highlight');
+                    }
+                } else {
+                    row.style.display = 'none';
+                    row.classList.remove('highlight');
+                }
+            });
+        }
+
+        document.getElementById('search').addEventListener('input', search);
+    </script>
+</body>
+</html>

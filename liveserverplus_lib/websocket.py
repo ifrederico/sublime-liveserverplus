@@ -2,6 +2,7 @@ import base64
 import hashlib
 import struct
 import os
+import sublime
 
 class WebSocketHandler:
     """Handles WebSocket connections and live reload functionality"""
@@ -12,14 +13,10 @@ class WebSocketHandler:
         
     def _load_injected_code(self):
         """Load WebSocket injection code from template"""
-        template_path = os.path.join(
-            os.path.dirname(__file__),
-            'templates',
-            'websocket.html'
-        )
         try:
-            with open(template_path, 'r', encoding='utf-8') as f:
-                self.INJECTED_CODE = f.read()
+            resource_path = "Packages/LiveServerPlus/liveserverplus_lib/templates/websocket.html"
+            template_str = sublime.load_resource(resource_path)
+            self.INJECTED_CODE = template_str
         except Exception as e:
             print(f"Error loading WebSocket template: {e}")
             # Fallback to empty script if template can't be loaded
