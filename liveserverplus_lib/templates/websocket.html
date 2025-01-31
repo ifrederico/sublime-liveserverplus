@@ -3,58 +3,64 @@
     // <![CDATA[  <-- For SVG support
     if ('WebSocket' in window) {
         (function() {
+            const protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
+            const address = protocol + window.location.host + '/ws';
+            let socket;
+            let reconnectAttempts = 0;
+            const maxReconnectAttempts = 5;
+            const reconnectDelay = 1000;
+
             function refreshCSS() {
                 const sheets = [].slice.call(document.getElementsByTagName("link"));
                 const head = document.getElementsByTagName("head")[0];
-                for (let i = 0; i < sheets.length; ++i) {
-                    const elem = sheets[i];
+                sheets.forEach(function(elem) {
                     const parent = elem.parentElement || head;
-                    parent.removeChild(elem);
                     const rel = elem.rel;
-                    if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+                    if (elem.href && (typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet")) {
                         const url = elem.href.replace(/(&|\\?)_cacheOverride=\\d+/, '');
                         elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
                     }
-                    parent.appendChild(elem);
-                }
+                });
             }
-            
-            const protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
-            const address = protocol + window.location.host + '/ws';
-            const socket = new WebSocket(address);
-            let reconnectAttempts = 0;
-            const maxReconnectAttempts = 5;
-            
-            socket.onmessage = function(msg) {
-                if (msg.data == 'reload') {
-                    console.log('Full page reload');
-                    window.location.reload();
+
+            function connect() {
+                if (socket) {
+                    socket.close();
                 }
-                else if (msg.data == 'refreshcss') {
-                    console.log('CSS refresh');
-                    refreshCSS();
-                }
-            };
-            
-            socket.onopen = function() {
-                console.log('Live reload enabled.');
-                reconnectAttempts = 0;
-            };
-            
-            socket.onclose = function() {
-                console.log('Live reload disabled.');
-                if (reconnectAttempts < maxReconnectAttempts) {
-                    reconnectAttempts++;
-                    console.log('Reconnecting... Attempt ' + reconnectAttempts);
-                    setTimeout(function() {
-                        new WebSocket(address);
-                    }, 1000);
-                }
-            };
-            
-            socket.onerror = function(err) {
-                console.error('WebSocket error:', err);
-            };
+
+                socket = new WebSocket(address);
+                
+                socket.onmessage = function(msg) {
+                    if (msg.data === 'reload') {
+                        console.log('Full page reload');
+                        window.location.reload();
+                    } else if (msg.data === 'refreshcss') {
+                        console.log('CSS refresh');
+                        refreshCSS();
+                    }
+                };
+
+                socket.onopen = function() {
+                    console.log('Live reload enabled.');
+                    reconnectAttempts = 0;
+                };
+
+                socket.onclose = function(e) {
+                    console.log('Live reload disabled.');
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        reconnectAttempts++;
+                        console.log(`Reconnecting... Attempt ${reconnectAttempts}`);
+                        setTimeout(connect, reconnectDelay);
+                    }
+                };
+
+                socket.onerror = function(err) {
+                    console.error('WebSocket error:', err);
+                    socket.close();
+                };
+            }
+
+            connect();
         })();
     } else {
         console.error('Your browser does not support WebSocket for Live-Reloading.');

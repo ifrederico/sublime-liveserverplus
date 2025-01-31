@@ -42,11 +42,11 @@ You can add keyboard shortcuts by creating a custom key binding file. Here's a s
 [
     { 
         "keys": ["alt+shift+s"], 
-        "command": "toggle_start_server"
+        "command": "live_server_start"
     },
     { 
         "keys": ["alt+shift+o"], 
-        "command": "open_current_file_start_server"
+        "command": "open_current_file_live_server"
     }
 ]
 ```
@@ -62,22 +62,6 @@ Customize settings in `Preferences > Package Settings > StartServer > Settings`:
     "browser": "",    // Empty for default, or "chrome", "firefox", "safari", "edge"
 }
 ```
-
-## Features
-
-### Live Reload
-- Auto-refreshes browser on file changes
-- Watches HTML, CSS, and JavaScript files
-- Real-time WebSocket communication
-
-### Multi-Folder Support
-- Serves files from all open project folders
-- Smart file watching across directories
-
-### Status Bar Integration
-- Shows server status
-- Displays current port
-- Indicates connected clients
 
 ## Requirements
 
