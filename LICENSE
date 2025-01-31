@@ -1,4 +1,4 @@
-MIT License
+Modified MIT License
 
 Copyright (c) 2025 Frederico
 
@@ -9,8 +9,17 @@ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
+1. The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
+
+2. Commercial use of the Software by Integrated Development Environment (IDE) 
+providers, text editor companies, or similar development tool vendors requires 
+a separate commercial license. To obtain a commercial license, please open an 
+issue in the GitHub repository.
+
+3. This restriction on commercial use applies specifically to incorporating the 
+Software into IDEs, text editors, or development tools that are sold or 
+monetized, whether as standalone products or as part of a larger offering.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

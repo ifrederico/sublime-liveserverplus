@@ -10,48 +10,52 @@ A lightweight development server with live reload capabilities for Sublime Text.
 - **Custom Port Selection**: Choose your preferred port number
 - **Status Bar Integration**: See server status, port, and connected clients at a glance
 
+---
+
 ## Installation
 
 ### Via Package Control (Recommended)
 
-1. Open Command Palette (Cmd/Ctrl + Shift + P)
-2. Select "Package Control: Install Package"
-3. Search for "LiveServerPlus"
+1. Open Command Palette (<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> on Windows/Linux, <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> on macOS).
+2. Select **"Package Control: Install Package"**.
+3. Search for **"LiveServerPlus"** and install.
 
 ### Manual Installation
 
-1. Download or clone this repository
-2. Go to `Preferences > Browse Packages...` in Sublime Text
-3. Copy the downloaded repository into the `Packages` directory
+1. Download or clone this repository.
+2. In Sublime Text, go to **Preferences > Browse Packages...**.
+3. Copy the downloaded repository into the `Packages` directory.
+
+---
 
 ## Usage
 
 ### From Command Palette
 
-1. Open Command Palette (Cmd/Ctrl + Shift + P)
+1. Open Command Palette (<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> / <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd>).
 2. Available commands:
-   - "Live Server Plus: Toggle" - Start/Stop the server
-   - "Live Server Plus: Custom Port" - Start server on a specific port
-   - "Live Server Plus: Open Current File" - Open current file in browser
+   - **"Live Server Plus: Toggle"** – Start/Stop the server
+   - **"Live Server Plus: Custom Port"** – Start the server on a specific port
+   - **"Live Server Plus: Open Current File"** – Open the current file in your browser
 
 ### Optional Key Bindings
 
-You can add keyboard shortcuts by creating a custom key binding file. Here's a suggested configuration:
+You can add keyboard shortcuts by creating or editing your custom key bindings file. For example:
 
 ```json
 [
-    { 
-        "keys": ["alt+shift+s"], 
+    {
+        "keys": ["alt+shift+s"],
         "command": "toggle_start_server"
     },
-    { 
-        "keys": ["alt+shift+o"], 
+    {
+        "keys": ["alt+shift+o"],
         "command": "open_current_file_start_server"
     }
 ]
 ```
 
-## Settings
+### Settings
 
 Customize settings in `Preferences > Package Settings > StartServer > Settings`:
 
@@ -62,6 +66,29 @@ Customize settings in `Preferences > Package Settings > StartServer > Settings`:
     "browser": "",    // Empty for default, or "chrome", "firefox", "safari", "edge"
 }
 ```
+
+### Example with Live Reload
+```json
+{
+    "port": 5500,
+    "poll_interval": 1.0,
+    "browser": "",
+    "live_reload": {
+        "enabled": true,
+        "reload": true,
+        "css_injection": true,
+        "delay": 500,
+        "ignore_exts": [".log", ".map"]
+    }
+}
+
+```
+
+- enabled: If true, Sublime’s own file events trigger reload instead of an internal file watcher.
+- reload: If true, a full page refresh occurs when any allowed file changes; if false, CSS changes are injected without a full reload.
+- css_injection: If true, .css changes are injected live (no page reload).
+- delay: Debounce (in milliseconds) for changes before triggering a reload or injection.
+- ignore_exts: A list of file extensions to ignore when auto-reloading or injecting.
 
 ## Features
 
@@ -86,7 +113,7 @@ Customize settings in `Preferences > Package Settings > StartServer > Settings`:
 
 ## License
 
-MIT License - see LICENSE file for details.
+Modified MIT License- see LICENSE file for details.
 
 ## Support
 
