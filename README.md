@@ -30,8 +30,8 @@ A lightweight development server with live reload capabilities for Sublime Text.
 
 1. Open Command Palette (Cmd/Ctrl + Shift + P)
 2. Available commands:
-   - "Live Server Plus: Toggle" - Start/Stop the server
-   - "Live Server Plus: Custom Port" - Start server on a specific port
+   - "Live Server Plus: Start/Stop" - Start/Stop the server
+   - "Live Server Plus: Settings" - Customize settings
    - "Live Server Plus: Open Current File" - Open current file in browser
 
 ### Optional Key Bindings
