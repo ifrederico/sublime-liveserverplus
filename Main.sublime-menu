@@ -5,7 +5,7 @@
         "id": "tools",
         "children": [
             {
-                "caption": "Live Server",
+                "caption": "Live Server Plus",
                 "children": [
                     {
                         "caption": "Start Server",
@@ -37,7 +37,7 @@
                                 "caption": "Settings",
                                 "command": "edit_settings",
                                 "args": {
-                                    "base_file": "${packages}/LiveServerPlus/LiveServer.sublime-settings",
+                                    "base_file": "${packages}/LiveServerPlus/LiveServerPlus.sublime-settings",
                                     "default": "// LiveServerPlus Settings - User\n{\n\t$0\n}\n"
                                 }
                             }

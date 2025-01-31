@@ -1,10 +1,9 @@
+# LiveServerPlus.py
 import sublime
 import sublime_plugin
-import webbrowser
 import os
-from pathlib import Path
 
-# Direct relative imports from the subpackage
+# Direct relative imports from your subpackage
 from .liveserverplus_lib.server import Server
 from .liveserverplus_lib.utils import open_in_browser
 
@@ -64,12 +63,11 @@ class LiveServerStartCommand(sublime_plugin.WindowCommand):
         # Get project folders
         folders = self.window.folders()
         
-        # If we have an active file, use its directory instead of project folders
+        # If we have an active file, use its directory
         if file_path:
             file_dir = os.path.dirname(file_path)
             folders = [file_dir]
         elif not folders:
-            # No folders and no file
             sublime.error_message("Open a folder or workspace... (File -> Open Folder)")
             return
             
@@ -127,7 +125,6 @@ class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
                 server_instance.folders_set.add(folder)
             rel_path = os.path.basename(file_path)
         
-        # Determine URL based on file type
         if is_file_allowed(file_path):
             url = f"http://{server_instance.settings.host}:{server_instance.settings.port}/{rel_path.replace(os.sep, '/')}"
         else:
@@ -152,3 +149,75 @@ def plugin_unloaded():
     """Called by Sublime Text when plugin is unloaded."""
     if is_server_running():
         live_server_stop()
+
+
+# ----------------------------------------------------
+# ADDED: Sublime-based Live Reload EventListener
+# ----------------------------------------------------
+import time
+
+_last_modified = {}
+
+class LiveServerPlusListener(sublime_plugin.EventListener):
+    """
+    If 'live_reload.enabled' == true, we skip the file watcher
+    and use Sublime's events to notify the server immediately
+    after a file is changed or saved. If 'false', we do nothing.
+    """
+    def on_post_save_async(self, view):
+        """Immediately notify on file save (no debounce needed)."""
+        if not (server_instance and server_instance.is_alive()):
+            return
+        
+        # Check if user turned on Sublime-based live reload
+        lr_settings = server_instance.settings._settings.get("live_reload", {})
+        if not lr_settings.get("enabled", False):
+            return  # rely on the file watcher instead
+
+        file_path = view.file_name()
+        if not file_path:
+            return
+        
+        # We might skip certain extensions (log files, etc.)
+        ignore_exts = lr_settings.get("ignore_exts", [])
+        if any(file_path.lower().endswith(ext) for ext in ignore_exts):
+            return
+        
+        # If we got here => immediate reload
+        server_instance.on_file_change(file_path)
+
+    def on_modified_async(self, view):
+        """
+        If 'delay' > 0, we do a small debounce to avoid reloading
+        on every keystroke. If 'delay' == 0, reload immediately.
+        """
+        if not (server_instance and server_instance.is_alive()):
+            return
+        
+        lr_settings = server_instance.settings._settings.get("live_reload", {})
+        if not lr_settings.get("enabled", False):
+            return  # If disabled, do nothing
+
+        file_path = view.file_name()
+        if not file_path:
+            return
+        
+        # Check if extension is ignored
+        ignore_exts = lr_settings.get("ignore_exts", [])
+        if any(file_path.lower().endswith(ext) for ext in ignore_exts):
+            return
+
+        delay_ms = lr_settings.get("delay", 0)
+        _last_modified[file_path] = time.time()
+        
+        if delay_ms <= 0:
+            # no debounce, immediate
+            server_instance.on_file_change(file_path)
+            return
+        
+        # Debounce with a callback
+        def check_debounce():
+            if (time.time() - _last_modified[file_path]) >= (delay_ms / 1000.0):
+                server_instance.on_file_change(file_path)
+        
+        sublime.set_timeout_async(check_debounce, delay_ms)

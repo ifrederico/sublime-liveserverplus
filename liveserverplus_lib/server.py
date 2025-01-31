@@ -44,10 +44,21 @@ class Server(threading.Thread):
             self.sock.bind((self.settings.host, self.settings.port))
             self.sock.listen(5)
             
-            # Start file watcher
-            self.file_watcher = FileWatcher(self.folders, self.on_file_change, self.settings)
-            self.file_watcher.start()
-            
+            # ------------------------------------------------------
+            # ADDED: Check live_reload setting
+            # If live_reload.enabled = false, start the file watcher;
+            # otherwise we skip it, letting Sublime events do reload.
+            # ------------------------------------------------------
+            live_reload_settings = self.settings._settings.get("live_reload", {})
+            if live_reload_settings.get("enabled", False):
+                print("[LiveServerPlus] live_reload.enabled is True => Skipping FileWatcher")
+                self.file_watcher = None
+            else:
+                print("[LiveServerPlus] live_reload.enabled is False => Starting FileWatcher")
+                self.file_watcher = FileWatcher(self.folders, self.on_file_change, self.settings)
+                self.file_watcher.start()
+            # ------------------------------------------------------
+
             # Update status
             self.status.update('running', self.settings.port)
             
@@ -104,9 +115,8 @@ class Server(threading.Thread):
                 self.send_error(conn, 405)
                 return
 
-            self.serve_file(conn, path)  # central method to serve
+            self.serve_file(conn, path)
         except socket.error as e:
-            # Only print for unexpected socket errors
             if e.errno not in [9, 57]:  # 9: Bad file descriptor, 57: Socket not connected
                 print(f"Socket error in connection: {e}")
         except Exception as e:
@@ -115,45 +125,37 @@ class Server(threading.Thread):
             self.cleanup_connection_thread(current_thread)
             try:
                 try:
-                    # Try an orderly shutdown first
                     conn.shutdown(socket.SHUT_RDWR)
                 except (socket.error, OSError):
-                    pass  # Ignore shutdown errors
+                    pass
                 finally:
                     conn.close()
             except (socket.error, OSError):
-                pass  # Ignore close errors
+                pass
 
     def serve_file(self, conn, path):
-        """
-        Serve the requested path.
-        Splits logic into smaller helper methods for clarity.
-        """
+        """Serve the requested path, with directory listings or 404 fallback."""
         if path == '/':
             path = '/index.html'
         rel_path = path.lstrip('/')
 
-        # 1) If it's a directory, serve a directory listing
         if self._serve_directory_if_applicable(conn, path, rel_path):
             return
         
-        # 2) If it's an allowed file type, serve it
         if self._serve_allowed_file(conn, path, rel_path):
             return
         
-        # 3) If that fails, try to show the parent directory
         if self._serve_parent_directory_if_exists(conn, path, rel_path):
             return
         
-        # 4) If no directory or file found, 404
         self.send_error(conn, 404, requested_path=path)
 
     def _serve_directory_if_applicable(self, conn, path, rel_path):
-        """Check if the requested path is a directory; if so, serve a directory listing."""
+        """Check if path is a directory and serve listing if so."""
         for folder in self.folders:
             full_path = os.path.join(folder, rel_path)
             if os.path.isdir(full_path):
-                directory_lister = DirectoryListing(self.settings)  # Pass settings here
+                directory_lister = DirectoryListing(self.settings)
                 content = directory_lister.generate_listing(full_path, path, folder)
                 headers = [
                     b"HTTP/1.1 200 OK",
@@ -168,7 +170,7 @@ class Server(threading.Thread):
         return False
 
     def _serve_allowed_file(self, conn, path, rel_path):
-        """Serve a file if it's in the allowed list (by extension or otherwise)."""
+        """If it's an allowed file, serve it; else fallback to listing."""
         ext = os.path.splitext(rel_path)[1].lower()
         is_allowed = any(ext == allowed_ext.lower() for allowed_ext in self.settings.allowed_file_types)
         
@@ -176,7 +178,6 @@ class Server(threading.Thread):
             full_path = os.path.join(folder, rel_path)
             if os.path.isfile(full_path):
                 if not is_allowed:
-                    # If the file exists but extension not allowed, serve directory listing of parent
                     dir_path = os.path.dirname(full_path)
                     dir_url = os.path.dirname(path)
                     directory_lister = DirectoryListing(self.settings)
@@ -192,17 +193,13 @@ class Server(threading.Thread):
                     conn.send(b"\r\n".join(headers))
                     return True
 
-                # If it's allowed, try to serve
                 if self._send_file_contents(conn, full_path):
                     return True
         
         return False
 
     def _serve_parent_directory_if_exists(self, conn, path, rel_path):
-        """
-        If we can't find the file, see if there's a parent directory to show.
-        Return True if we served a parent directory listing, else False.
-        """
+        """Serve the parent directory if direct file not found but the parent is a directory."""
         for folder in self.folders:
             parent_dir_path = os.path.dirname(os.path.join(folder, rel_path))
             if os.path.isdir(parent_dir_path):
@@ -224,26 +221,20 @@ class Server(threading.Thread):
         return False
 
     def _send_file_contents(self, conn, file_path):
-        """
-        Read file content (or from open Sublime views) and send it.
-        Returns True if successfully served, False otherwise.
-        """
+        """Serve file content from Sublime view or disk, optionally injecting WebSocket script."""
         content = self._get_sublime_view_content(file_path)
         
-        # If not in Sublime views, try from disk
         if content is None:
             content = self._read_file_from_disk(file_path)
             if content is None:
                 return False
 
-        # Handle optional HTML injection
+        # If HTML, inject the WebSocket script
         if file_path.lower().endswith(('.html', '.htm')):
-            # Convert bytes -> string, inject script, back to bytes
             html_str = content.decode('utf-8', errors='replace')
             injected_str = self.inject_websocket_script(html_str)
             content = injected_str.encode('utf-8')
 
-        # Compress data if configured
         mime_type = get_mime_type(file_path)
         is_compressed = False
         if self.settings.enable_compression:
@@ -255,7 +246,6 @@ class Server(threading.Thread):
             except Exception as e:
                 print(f"Compression error: {e}")
 
-        # Build response headers
         headers = [
             b"HTTP/1.1 200 OK",
             f"Content-Type: {mime_type}".encode('utf-8'),
@@ -264,7 +254,6 @@ class Server(threading.Thread):
             b"X-Content-Type-Options: nosniff"
         ]
         
-        # CORS, if enabled
         if self.settings.cors_enabled:
             headers.extend([
                 b"Access-Control-Allow-Origin: *",
@@ -286,7 +275,7 @@ class Server(threading.Thread):
         return True
 
     def _get_sublime_view_content(self, file_path):
-        """Return file content from an open Sublime view if available, else None."""
+        """Return file content if open in Sublime, else None."""
         window = sublime.active_window()
         if not window:
             return None
@@ -296,14 +285,14 @@ class Server(threading.Thread):
         return None
 
     def _read_file_from_disk(self, file_path):
-        """Read file from disk, respecting max_file_size and text vs. binary logic."""
+        """Read from disk, respecting max_file_size."""
         try:
             file_size = os.path.getsize(file_path)
             if file_size > self.settings.max_file_size * 1024 * 1024:
                 print(f"File too large: {file_path}")
                 return None
 
-            # Simple check for text vs binary by extension
+            # Basic text vs binary guess by extension
             if file_path.lower().endswith((
                 '.html', '.htm', '.css', '.js', '.json',
                 '.xml', '.txt', '.md', '.jsx', '.ts', '.tsx'
@@ -319,21 +308,19 @@ class Server(threading.Thread):
 
     def inject_websocket_script(self, html_content):
         """
-        Injects the WebSocket script into HTML, 
-        searching for </body> case-insensitively; 
-        if not found, appends at the end.
+        Inject the WebSocket script right before </body> (case-insensitive),
+        or append at the end if no match.
         """
         pattern = re.compile(r"</body>", re.IGNORECASE)
         substituted, num_replacements = pattern.subn(self.websocket.INJECTED_CODE, html_content, count=1)
         
-        # If no `</body>` found, just append
         if num_replacements == 0:
             substituted += self.websocket.INJECTED_CODE
         
         return substituted
 
     def handle_websocket_connection(self, conn):
-        """Handle WebSocket connection after upgrade."""
+        """Keep reading from the WebSocket until closed."""
         try:
             while not self._stop_flag:
                 try:
@@ -348,12 +335,9 @@ class Server(threading.Thread):
                 pass
 
     def send_error(self, conn, code, requested_path=""):
-        """
-        Send an HTTP error response. For 404, generate a custom page via ErrorPages.
-        """
+        """Send an HTTP error response or a custom 404 page."""
         message = responses.get(code, 'Unknown Error')
         
-        # If 404, let's use the ErrorPages logic:
         if code == 404:
             error_html = ErrorPages.get_404_page(requested_path, self.folders)
             content = error_html.encode('utf-8')
@@ -368,7 +352,7 @@ class Server(threading.Thread):
             conn.send(b"\r\n".join(headers))
             return
         
-        # Otherwise, a standard error
+        # Otherwise, standard error
         content = f"Error {code}: {message}".encode('utf-8')
         headers = [
             f"HTTP/1.1 {code} {message}".encode(),
@@ -388,22 +372,20 @@ class Server(threading.Thread):
     def stop(self):
         """Stop the server with graceful cleanup."""
         if self._stop_flag:
-            return  # Already stopping
+            return
             
         print("Initiating server shutdown...")
         self._stop_flag = True
 
-        # Stop file watcher first
         if self.file_watcher:
             print("Stopping file watcher...")
             self.file_watcher.stop()
-            self.file_watcher.join(timeout=5)  # Wait up to 5 seconds
+            self.file_watcher.join(timeout=5)
             if self.file_watcher.is_alive():
                 print("Warning: File watcher didn't stop cleanly")
             else:
                 print("File watcher stopped")
 
-        # Close WebSocket connections
         print("Closing WebSocket connections...")
         active_clients = list(self.websocket.clients)
         for client in active_clients:
@@ -417,7 +399,6 @@ class Server(threading.Thread):
                 pass
         self.websocket.clients.clear()
 
-        # Close main socket
         print("Closing main server socket...")
         if self.sock:
             try:
@@ -433,7 +414,6 @@ class Server(threading.Thread):
             except Exception:
                 pass
 
-        # Wait for connection threads to finish
         print("Waiting for connection threads to finish...")
         with self._cleanup_lock:
             active_threads = list(self._connection_threads)

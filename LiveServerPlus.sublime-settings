@@ -1,3 +1,4 @@
+// LiveServerPlus.sublime-settings
 {
     // Server Settings
     "host": "localhost",
@@ -13,61 +14,46 @@
         ".hg",
         ".sass-cache",
         ".pytest_cache",
-        "dist",           // Added: common build directory
-        "build",          // Added: common build directory
-        "coverage",       // Added: test coverage reports
-        ".next",          // Added: Next.js build
-        ".nuxt"          // Added: Nuxt.js build
+        "dist",
+        "build",
+        "coverage",
+        ".next",
+        ".nuxt"
     ],
     
     // Browser Settings
     "open_browser_on_start": true,
-    "browser": "",    // Empty for default, or "chrome", "firefox", "safari", "edge"
+    "browser": "",  // e.g. "chrome", "firefox", or "" for default
     
     // File Types
     "allowed_file_types": [
-        // Core Web
         ".html", ".htm", ".css", ".js", ".mjs",
-        
-        // Modern JavaScript/TypeScript
         ".jsx", ".tsx", ".ts", ".vue", ".svelte",
-        
-        // Style Extensions
         ".scss", ".sass", ".less", ".postcss",
-        
-        // Images
         ".jpg", ".jpeg", ".png", ".gif", ".svg",
         ".ico", ".webp", ".avif",
-        
-        // Fonts
         ".woff", ".woff2", ".ttf", ".eot",
-        
-        // Media
         ".mp4", ".webm", ".ogg", ".mp3", ".wav",
-        
-        // Documents
         ".pdf", ".json", ".xml",
-        
-        // Development
         ".map", ".md"
     ],
     
     // Performance Settings
-    "max_file_size": 100,        // Maximum file size in MB
-    "enable_compression": true,   // Enable GZIP compression
+    "max_file_size": 100,
+    "enable_compression": true,
     
     // UI Settings
-    "status_bar_enabled": true,   // Show server status in status bar
+    "status_bar_enabled": true,
     
     // Advanced Settings
-    "cors_enabled": false,        // Enable CORS headers for API development
+    "cors_enabled": false,
     
     // Live Reload Settings
     "live_reload": {
-        "enabled": true,          // Enable live reload
-        "css_injection": true,    // Use CSS injection instead of page reload
-        "delay": 0,              // Delay before reload in milliseconds
-        "ignore_exts": [         // File extensions to ignore for live reload
+        "enabled": false,           // Toggle Sublime-based live reload
+        "css_injection": true,     // Use CSS injection instead of page reload (server already respects 'refreshcss')
+        "delay": 500,             // Debounce: 500 ms after last modification
+        "ignore_exts": [
             ".log",
             ".map"
         ]
