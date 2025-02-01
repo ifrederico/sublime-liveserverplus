@@ -50,7 +50,7 @@
             
             // Live Reload Settings
             "live_reload": {
-                "enabled": true,           // Toggle true/false for Sublime-based live reload
+                "enabled": false,           // Toggle true/false for Sublime-based live reload
                 "css_injection": true,     // Use CSS injection instead of page reload (server already respects 'refreshcss')
                 "delay": 500,             // Debounce: 500 ms after last modification
                 "ignore_exts": [
