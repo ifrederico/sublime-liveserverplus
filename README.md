@@ -12,13 +12,13 @@ To use **Live Server Plus**, first open a folder or workspace (File » Open Fold
 
 ### 1. Main Menu
 
-![Live Server Plus Start Server](./images/liveserverplus2.gif)
-
 1. Go to **Tools » Live Server Plus**.  
 2. Choose one of the following:
    - **Start Server**  
    - **Stop Server**  
-   - **Open Current File** 
+   - **Open Current File**
+  
+![Live Server Plus Start Server](./images/liveserverplus2.gif)
 
 ### 2. Command Palette
 
