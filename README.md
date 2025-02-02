@@ -2,6 +2,8 @@
 
 A lightweight development server with WebSocket-based live reload and directory listings—all from within Sublime Text.
 
+![Live Server Plus Demo](./images/liveserverplus.gif)
+
 ## Features
 
 - **Live Reload**  
