@@ -34,18 +34,18 @@ class WebSocketHandler:
         """Handle WebSocket upgrade request, returning the response handshake or None."""
         ws_key = None
         for header in headers:
-            if header.startswith('Sec-WebSocket-Key:'):
-                ws_key = header.split(': ')[1].strip()
+            # In some systems, the header name could be upper/lower case. Let's be safe.
+            if header.lower().startswith('sec-websocket-key:'):
+                ws_key = header.split(':', 1)[1].strip()
                 break
                 
         if not ws_key:
             return None
         
         # Generate accept key per WebSocket spec
+        magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
         ws_accept = base64.b64encode(
-            hashlib.sha1(
-                f"{ws_key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11".encode()
-            ).digest()
+            hashlib.sha1((ws_key + magic).encode()).digest()
         ).decode()
         
         return (
@@ -67,38 +67,47 @@ class WebSocketHandler:
                 self.clients.remove(client)
 
     def notify_clients(self, file_path):
-        """Notify all connected WebSocket clients of file changes in a thread-safe manner."""
+        """
+        Notify all connected WebSocket clients of file changes in a thread-safe manner,
+        avoiding 'Set changed size during iteration' errors by taking a snapshot
+        of self.clients before sending.
+        """
         # Try to retrieve live_reload settings from our attached settings.
         if hasattr(self, 'settings'):
             live_reload_settings = self.settings._settings.get("live_reload", {})
         else:
             # Fallback if no settings were attached.
-            import sublime
             live_reload_settings = sublime.load_settings("LiveServerPlus.sublime-settings").get("live_reload", {})
 
-        # Check the css_injection flag. If disabled, then we force a full reload even for CSS files.
+        # Check the css_injection flag. If disabled, we force a full reload even for CSS files.
         css_injection_enabled = live_reload_settings.get("css_injection", True)
-
         if file_path.lower().endswith('.css') and css_injection_enabled:
             message = 'refreshcss'
         else:
             message = 'reload'
         
+        # Build the frame for all clients
         try:
             frame = self._create_websocket_frame(message)
         except Exception as e:
             print(f"Error creating frame: {e}")
             return
 
-        dead_clients = set()
-
+        # Take a snapshot of the current clients under lock
         with self._lock:
-            for client in self.clients:
-                try:
-                    client.send(frame)
-                except (socket.error, OSError) as e:
-                    print(f"Error sending to client: {e}")
-                    dead_clients.add(client)
+            active_clients = list(self.clients)
+
+        # Send to each client outside the lock
+        dead_clients = set()
+        for client in active_clients:
+            try:
+                client.send(frame)
+            except (socket.error, OSError) as e:
+                print(f"Error sending to client: {e}")
+                dead_clients.add(client)
+
+        # Reacquire lock to remove dead clients
+        with self._lock:
             for client in dead_clients:
                 try:
                     client.shutdown(socket.SHUT_RDWR)
@@ -111,7 +120,8 @@ class WebSocketHandler:
     def _create_websocket_frame(self, message):
         """Create a simple WebSocket text frame from a string message."""
         frame = bytearray()
-        frame.append(0x81)  # 0x1: text frame; final frame bit => 0x80 => combined => 0x81
+        # 0x1 indicates a text frame; 0x80 is the FIN bit => combined = 0x81
+        frame.append(0x81)
         
         msg_bytes = message.encode('utf-8', errors='replace')
         length = len(msg_bytes)
