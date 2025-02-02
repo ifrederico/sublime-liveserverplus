@@ -2,7 +2,7 @@
 
 A lightweight development server with WebSocket-based live reload and directory listings—all from within Sublime Text.
 
-![Live Server Plus Demo](./images/liveserverplus.gif)
+![Live Server Plus Demo](./images/liveserverplus1.gif)
 
 ## Usage
 
@@ -12,7 +12,7 @@ To use **Live Server Plus**, first open a folder or workspace (File » Open Fold
 
 ### 1. Main Menu
 
-![Live Server Plus Start Server](./images/liveserverplus-startserver.gif)
+![Live Server Plus Start Server](./images/liveserverplus2.gif)
 
 1. Go to **Tools » Live Server Plus**.  
 2. Choose one of the following:
