@@ -1,4 +1,4 @@
-# LiveServerPlus for Sublime Text
+# Live Server Plus for Sublime Text
 
 A lightweight development server with WebSocket-based live reload and directory listings—all from within Sublime Text.
 
