@@ -4,32 +4,55 @@ A lightweight development server with WebSocket-based live reload and directory 
 
 ![Live Server Plus Demo](./images/liveserverplus.gif)
 
+## Usage
+
+To use **Live Server Plus**, first open a folder or workspace (File » Open Folder) in Sublime Text. Then choose **either** of the following methods:
+
+---
+
+### 1. Main Menu
+
+![Live Server Plus Start Server](./images/liveserverplus-startserver.gif)
+
+1. Go to **Tools » Live Server Plus**.  
+2. Choose one of the following:
+   - **Start Server**  
+   - **Stop Server**  
+   - **Open Current File** 
+
+### 2. Command Palette
+
+1. Press `Cmd/Ctrl + Shift + P` to open the Command Palette.  
+2. Type (and select) any of these commands:
+   - **Live Server Plus: Start**  
+     Starts the server on the configured port (shows a message if it’s already running).
+   - **Live Server Plus: Stop**  
+     Stops the running server.
+   - **Live Server Plus: Open Current File**  
+     Opens the active file in your browser using the dev server.
+   - **Live Server Plus: Settings**  
+     Opens the settings file for customizing port, host, live reload, etc.
+
 ## Features
 
-- **Live Reload**  
-  Automatically refreshes your browser when files are modified (with optional CSS-only injection).
+- **Instant Refresh**  
+  See your browser update the moment you save a file—no manual reloading needed.
 
-- **Zero Dependencies**  
-  Pure Python solution; no external modules required.
+- **No Extra Installs**  
+  Runs purely on Python (already included with Sublime), so you can start right away.
 
-- **Directory Listings & 404 Pages**  
-  Automatically generates a clean directory index, plus a custom 404 with “did you mean” suggestions.
+- **Friendly Directory View & 404**  
+  Browse your project’s files in a clean, auto-generated list, and get custom 404s with “did you mean?” suggestions.
 
-- **Multi-Folder Support**  
-  Serves files from all open project folders, with the first matching file “winning” for overlapping paths.
+- **Easy Setup for File Watching**  
+  - **Sublime Events**: Rely on Sublime’s built-in events for instant reloads.  
+  - **Built-in Watcher**: A fallback poll-based system to catch external file changes.
 
-- **Custom Error Pages**  
-  Helpful 404 page that can suggest similarly named files.
-
-- **Two File-Watching Modes**  
-  - **Sublime-based**: Instant reload using `on_modified_async` and `on_post_save_async`.  
-  - **Built-in Watcher**: Poll-based for external changes or when Sublime events are unavailable.
-
-- **Configurable Server Settings**  
-  Choose port, host, CORS headers, or compression—and optionally open the browser on start.
+- **Tweak How You Like**  
+  Pick your server host, port, or enable compression—and optionally open your default browser on start.
 
 - **Status Bar Integration**  
-  View server status (running/stopped) and port at a glance.
+  Stay in the flow: see if the server is running (and which port it’s on).
 
 ---
 
@@ -49,19 +72,6 @@ A lightweight development server with WebSocket-based live reload and directory 
 4. Ensure the folder name is **`LiveServerPlus`**.
 
 ---
-
-## Usage
-
-1. Open the Command Palette (`Cmd/Ctrl + Shift + P`).
-2. Type one of the following commands:
-   - **“Live Server Plus: Start”**  
-     Starts the server on the configured port. If it’s already running, you’ll see a message.
-   - **“Live Server Plus: Stop”**  
-     Stops the running server.
-   - **“Live Server Plus: Open Current File”**  
-     Opens the active file in your browser via the dev server.
-   - **“Live Server Plus: Settings”**  
-     Opens a settings file where you can customize port, host, live reload behavior, etc.
 
 ### Optional Key Bindings
 
@@ -133,7 +143,7 @@ Access the settings via **`Preferences > Package Settings > Live Server Plus > S
 
 ## Requirements
 
-- **Sublime Text** 3 or 4
+- **Sublime Text** 4
 - A browser with WebSocket support (Chrome, Firefox, Safari, Edge, etc.)
 
 ---
@@ -161,7 +171,6 @@ We welcome pull requests for bug fixes, new features, or documentation improveme
 
 1. Check [Issues](https://github.com/ifrederico/sublime-liveserverplus/issues) for known problems or suggestions.
 2. Open a new issue with:
-   - **Sublime Text version** (3 or 4)
    - **Operating System** (Windows, macOS, or Linux)
    - **Steps to reproduce**
    - **Expected vs. actual behavior**
