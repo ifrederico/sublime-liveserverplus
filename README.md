@@ -17,8 +17,6 @@ To use **Live Server Plus**, first open a folder or workspace (File » Open Fold
    - **Start Server**  
    - **Stop Server**  
    - **Open Current File**
-  
-![Live Server Plus Start Server](./images/liveserverplus2.gif)
 
 ### 2. Command Palette
 
@@ -44,9 +42,8 @@ To use **Live Server Plus**, first open a folder or workspace (File » Open Fold
 - **Friendly Directory View & 404**  
   Browse your project’s files in a clean, auto-generated list, and get custom 404s with “did you mean?” suggestions.
 
-- **Easy Setup for File Watching**  
-  - **Sublime Events**: Rely on Sublime’s built-in events for instant reloads.  
-  - **Built-in Watcher**: A fallback poll-based system to catch external file changes.
+- **Easy Setup for File Watching**
+  Rely on Sublime’s built-in events for instant reloads with a fallback poll-based system to catch external file changes.
 
 - **Tweak How You Like**  
   Pick your server host, port, or enable compression—and optionally open your default browser on start.
