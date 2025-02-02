@@ -6,6 +6,8 @@ A lightweight development server with WebSocket-based live reload and directory 
 
 ## Features
 
+[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)
+
 - **Live Reload**  
   Automatically refreshes your browser when files are modified (with optional CSS-only injection).
 
