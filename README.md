@@ -4,11 +4,11 @@ A lightweight development server with WebSocket-based live reload and directory 
 
 ![Live Server Plus Demo](./images/liveserverplus1.gif)
 
+---
+
 ## Usage
 
 To use **Live Server Plus**, first open a folder or workspace (File » Open Folder) in Sublime Text. Then choose **either** of the following methods:
-
----
 
 ### 1. Main Menu
 
@@ -16,7 +16,7 @@ To use **Live Server Plus**, first open a folder or workspace (File » Open Fold
 2. Choose one of the following:
    - **Start Server**  
    - **Stop Server**  
-   - **Open Current File**
+   - **Open Current File** 
 
 ### 2. Command Palette
 
@@ -42,8 +42,9 @@ To use **Live Server Plus**, first open a folder or workspace (File » Open Fold
 - **Friendly Directory View & 404**  
   Browse your project’s files in a clean, auto-generated list, and get custom 404s with “did you mean?” suggestions.
 
-- **Easy Setup for File Watching**
-  Rely on Sublime’s built-in events for instant reloads with a fallback poll-based system to catch external file changes.
+- **Easy Setup for File Watching**  
+  - **Sublime Events**: Rely on Sublime’s built-in events for instant reloads.  
+  - **Built-in Watcher**: A fallback poll-based system to catch external file changes.
 
 - **Tweak How You Like**  
   Pick your server host, port, or enable compression—and optionally open your default browser on start.
