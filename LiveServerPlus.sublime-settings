@@ -1,8 +1,54 @@
 // LiveServerPlus.sublime-settings
         {
+            // ==============================
+            // Basic Settings
+            // ==============================
+            
             // Server Settings
             "host": "localhost",
             "port": 0, // 0 For random port
+            
+            // Browser Settings
+            "open_browser_on_start": true,
+            "browser": "",  // e.g. "chrome", "firefox", or "" for default
+
+            // UI Settings
+            "status_bar_enabled": true,
+            
+            // Live Reload Settings
+            "live_reload": {
+                "enabled": false,           // Toggle true/false for Sublime-based live reload
+                "css_injection": true,     // Use CSS injection instead of page reload (server already respects 'refreshcss')
+                "delay": 500,             // Debounce: 500 ms after last modification
+                "ignore_exts": [
+                    ".log",
+                    ".map"
+                ]
+            },
+            
+            // ==============================
+            // Advanced Settings
+            // ==============================
+            
+            // File Types
+            "allowed_file_types": [
+                // Basic Web Files
+                ".html", ".htm", ".css", ".js", ".mjs",
+                // Modern Web Frameworks
+                ".jsx", ".tsx", ".ts", ".vue", ".svelte",
+                // CSS Preprocessors
+                ".scss", ".sass", ".less", ".postcss",
+                // Images
+                ".jpg", ".jpeg", ".png", ".gif", ".svg",
+                ".ico", ".webp", ".avif",
+                // Fonts
+                ".woff", ".woff2", ".ttf", ".eot",
+                // Media Files
+                ".mp4", ".webm", ".ogg", ".mp3", ".wav",
+                // Documents & Data
+                ".pdf", ".json", ".xml",
+                ".map", ".md", ".txt"
+            ],
             
             // File Watcher Settings
             "poll_interval": 1.0,
@@ -21,41 +67,10 @@
                 ".nuxt"
             ],
             
-            // Browser Settings
-            "open_browser_on_start": true,
-            "browser": "",  // e.g. "chrome", "firefox", or "" for default
-            
-            // File Types
-            "allowed_file_types": [
-                ".html", ".htm", ".css", ".js", ".mjs",
-                ".jsx", ".tsx", ".ts", ".vue", ".svelte",
-                ".scss", ".sass", ".less", ".postcss",
-                ".jpg", ".jpeg", ".png", ".gif", ".svg",
-                ".ico", ".webp", ".avif",
-                ".woff", ".woff2", ".ttf", ".eot",
-                ".mp4", ".webm", ".ogg", ".mp3", ".wav",
-                ".pdf", ".json", ".xml",
-                ".map", ".md", ".txt"
-            ],
-            
             // Performance Settings
             "max_file_size": 100,
             "enable_compression": true,
             
-            // UI Settings
-            "status_bar_enabled": true,
-            
-            // Advanced Settings
-            "cors_enabled": false,
-            
-            // Live Reload Settings
-            "live_reload": {
-                "enabled": false,           // Toggle true/false for Sublime-based live reload
-                "css_injection": true,     // Use CSS injection instead of page reload (server already respects 'refreshcss')
-                "delay": 500,             // Debounce: 500 ms after last modification
-                "ignore_exts": [
-                    ".log",
-                    ".map"
-                ]
-            }
+            // Security Settings
+            "cors_enabled": false
         }
