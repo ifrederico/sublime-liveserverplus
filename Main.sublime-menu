@@ -1,0 +1,52 @@
+// Main.sublime-menu
+[
+    {
+        "caption": "Tools",
+        "mnemonic": "l",
+        "id": "tools",
+        "children": [
+            {
+                "caption": "Live Server Plus",
+                "children": [
+                    {
+                        "caption": "Start Server",
+                        "command": "live_server_start"
+                    },
+                    {
+                        "caption": "Stop Server",
+                        "command": "live_server_stop"
+                    },
+                    { "caption": "-" },
+                    {
+                        "caption": "Open Current File",
+                        "command": "open_current_file_live_server"
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "preferences",
+        "children": [
+            {
+                "id": "package-settings",
+                "children": [
+                    {
+                        "caption": "Live Server Plus",
+                        "children": [
+                            {
+                                "caption": "Settings",
+                                "command": "edit_settings",
+                                "args": {
+                                    // Updated to point to LiveServerPlus.sublime-settings
+                                    "base_file": "${packages}/LiveServerPlus/LiveServerPlus.sublime-settings",
+                                    "default": "// LiveServerPlus Settings - User\n{\n\t$0\n}\n"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+]

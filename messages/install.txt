@@ -1,0 +1,34 @@
+Thank you for installing Live Server Plus — a lightweight, zero-dependency dev server for Sublime Text!
+
+
+Getting Started:
+1. Open (or create) a folder with your web files.
+2. Open the Command Palette (Cmd/Ctrl + Shift + P).
+3. Type “Live Server Plus: Start” and press Enter.
+4. When the server starts, the plugin will:
+   • Serve files from your open folder(s)
+   • Open your default browser (optional) 
+   • Automatically reload pages on save or modification
+
+Available Commands:
+• **Live Server Plus: Start**  
+  Starts the server (or shows a message if already running).
+
+• **Live Server Plus: Stop**  
+  Stops the running server.
+
+• **Live Server Plus: Open Current File**  
+  Opens the current file in your browser through the dev server.
+
+• **Live Server Plus: Settings**  
+  Opens the user settings for customizing host, port, live reload delay, etc.
+
+Useful Tips:
+• Watch the Sublime Text status bar for server status and port.
+• By default, the plugin injects a small WebSocket script into .html files for live reload.
+• You can enable or disable certain features (like compression, CORS, or directory listings) via “LiveServerPlus.sublime-settings.”
+
+For more information or support, visit:
+https://github.com/ifrederico/sublime-liveserverplus
+
+Happy coding!

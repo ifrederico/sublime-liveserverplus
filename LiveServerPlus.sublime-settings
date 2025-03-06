@@ -1,0 +1,144 @@
+// LiveServerPlus.sublime-settings
+{
+    // ==========================================
+    // Basic Server Settings
+    // ==========================================
+
+    // Hostname/IP where the server runs.
+    "host": "localhost",
+
+    // Port number (0 selects a random available port).
+    "port": 0,
+
+    // Automatically opens the browser when server starts.
+    "open_browser_on_start": true,
+
+    // Specify the browser to open (leave empty for default).
+    // Examples: "chrome", "firefox", "edge"
+    "browser": "",
+
+    // Enable or disable status bar notifications.
+    "status_bar_enabled": true,
+
+    // ==========================================
+    // Live Reload Configuration
+    // ==========================================
+
+    "live_reload": {
+        // Enable automatic reload on file changes.
+        "enabled": false,
+
+        // Inject CSS changes directly without full page reload.
+        "css_injection": true,
+
+        // Delay (in milliseconds) after changes before reload.
+        "delay": 500,
+
+        // File extensions to ignore during live reload.
+        "ignore_exts": [".log", ".map"]
+    },
+
+    // ==========================================
+    // Allowed File Types Served by Server
+    // ==========================================
+
+    "allowed_file_types": [
+        // Basic Web Files
+        ".html", ".htm", ".css", ".js", ".mjs",
+
+        // Modern Framework Files
+        ".jsx", ".tsx", ".ts", ".vue", ".svelte",
+
+        // CSS Preprocessors
+        ".scss", ".sass", ".less", ".postcss",
+
+        // Image Formats
+        ".jpg", ".jpeg", ".png", ".gif", ".svg",
+        ".ico", ".webp", ".avif",
+
+        // Web Font Formats
+        ".woff", ".woff2", ".ttf", ".eot",
+
+        // Media Formats
+        ".mp4", ".webm", ".ogg", ".mp3", ".wav",
+
+        // Document & Data Formats
+        ".pdf", ".json", ".xml", ".map", ".md", ".txt"
+    ],
+
+    // ==========================================
+    // Advanced File Watcher Settings
+    // ==========================================
+
+    // Interval (in seconds) between file polling checks.
+    "poll_interval": 1.0,
+
+    // Directories ignored by file watcher.
+    "ignore_dirs": [
+        "node_modules",
+        ".git",
+        "__pycache__",
+        ".svn",
+        ".hg",
+        ".sass-cache",
+        ".pytest_cache",
+        "dist",
+        "build",
+        "coverage",
+        ".next",
+        ".nuxt"
+    ],
+
+    // ==========================================
+    // Cache Settings
+    // ==========================================
+
+    "cache": {
+        // Enable in-memory file caching
+        "enabled": true,
+        
+        // Maximum number of files to keep in cache
+        "max_files": 50,
+        
+        // Maximum age of cache entries in seconds
+        "max_age": 300
+    },
+
+    // ==========================================
+    // Logging Configuration
+    // ==========================================
+
+    // Log level (debug, info, warning, error)
+    "log_level": "info",
+
+    // Enable file logging to the Packages/User/LiveServerPlus/logs directory
+    "file_logging": true,
+
+    // ==========================================
+    // Connection Settings
+    // ==========================================
+
+    "connections": {
+        // Maximum number of concurrent connections
+        "max_concurrent": 100,
+        
+        // Connection timeout in seconds
+        "timeout": 30,
+
+        // Maximum threads for connection handling
+        "max_threads": 10  
+    },
+
+    // ==========================================
+    // Performance & Security Settings
+    // ==========================================
+
+    // Maximum file size served by the server (in MB).
+    "max_file_size": 100,
+
+    // Enable gzip compression for served files.
+    "enable_compression": true,
+
+    // Allow Cross-Origin Resource Sharing (CORS).
+    "cors_enabled": false
+}
