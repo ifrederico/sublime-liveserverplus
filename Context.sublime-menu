@@ -1,0 +1,35 @@
+[
+    {
+        "caption": "-"
+    },
+    {
+        "caption": "Live Server",
+        "children": [
+            {
+                "caption": "Open in Browser",
+                "command": "open_current_file_live_server",
+                "mnemonic": "O"
+            },
+            {
+                "caption": "Start Server Here",
+                "command": "live_server_start_here",
+                "mnemonic": "S"
+            },
+            {
+                "caption": "-"
+            },
+            {
+                "caption": "Stop Server",
+                "command": "live_server_stop"
+            },
+            {
+                "caption": "Change Port...",
+                "command": "live_server_change_port"
+            },
+            {
+                "caption": "Show Log",
+                "command": "live_server_show_log"
+            }
+        ]
+    }
+]
