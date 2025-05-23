@@ -450,7 +450,7 @@ def is_valid_port(port):
 
 def get_free_port(start_port=8000, max_port=9000):
     """
-    Find first available port in range
+    Find a random available port in range
     
     Args:
         start_port (int): Port to start checking from
@@ -460,8 +460,13 @@ def get_free_port(start_port=8000, max_port=9000):
         int: First available port or None if none found
     """
     import socket
+    import random
     
-    for port in range(start_port, max_port):
+    # Create a list of ports to check in random order
+    port_range = list(range(start_port, max_port))
+    random.shuffle(port_range)
+    
+    for port in port_range:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.bind(('localhost', port))
