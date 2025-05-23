@@ -35,30 +35,82 @@ def is_file_allowed(file_path):
     return ServerManager.get_instance().is_file_allowed(file_path)
 
 class LiveServerStartCommand(sublime_plugin.WindowCommand):
-    """Command to start the Live Server"""
+    """Enhanced start command with folder selection"""
     
-    def run(self):
+    def run(self, folders=None):
         manager = ServerManager.get_instance()
         
         if manager.is_running():
             sublime.status_message("Live Server is already running")
             return
-            
-        view = self.window.active_view()
-        file_path = view.file_name() if view else None
         
-        # Get project folders
-        folders = self.window.folders()
-        
-        # If we have an active file, use its directory
-        if file_path:
-            file_dir = os.path.dirname(file_path)
-            folders = [file_dir]
-        elif not folders:
-            sublime.error_message("Open a folder or workspace... (File -> Open Folder)")
+        # If folders explicitly passed, use them
+        if folders:
+            self._start_server(folders)
             return
             
-        # Start the server
+        # Get all possible folders
+        all_folders = self._get_all_folders()
+        
+        if not all_folders:
+            sublime.error_message("Open a folder or workspace... (File -> Open Folder)")
+            return
+        
+        # If only one folder, start immediately
+        if len(all_folders) == 1:
+            self._start_server([all_folders[0]['path']])
+            return
+            
+        # Show quick panel for multiple folders
+        items = []
+        for folder in all_folders:
+            items.append([
+                folder['name'],
+                folder['path']
+            ])
+        
+        # Add "All Folders" option at the top
+        items.insert(0, ["All Folders", "Serve all open folders"])
+        
+        def on_select(index):
+            if index == -1:
+                return
+            elif index == 0:
+                # Serve all folders
+                paths = [f['path'] for f in all_folders]
+                self._start_server(paths)
+            else:
+                # Serve selected folder
+                self._start_server([all_folders[index - 1]['path']])
+        
+        self.window.show_quick_panel(items, on_select)
+    
+    def _get_all_folders(self):
+        """Get all folders from window and current file"""
+        folders = []
+        
+        # Add project folders
+        for folder in self.window.folders():
+            folders.append({
+                'name': os.path.basename(folder),
+                'path': folder
+            })
+        
+        # Add current file's folder if not already included
+        view = self.window.active_view()
+        if view and view.file_name():
+            file_dir = os.path.dirname(view.file_name())
+            if not any(f['path'] == file_dir for f in folders):
+                folders.append({
+                    'name': os.path.basename(file_dir) + " (current file)",
+                    'path': file_dir
+                })
+        
+        return folders
+    
+    def _start_server(self, folders):
+        """Start server with given folders"""
+        manager = ServerManager.get_instance()
         if manager.start(folders):
             server = manager.get_server()
             if server and server.settings.browser_open_on_start:
@@ -132,6 +184,115 @@ class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
             manager.is_running() and 
             bool(self.window.active_view() and self.window.active_view().file_name())
         )
+
+class LiveServerStartHereCommand(sublime_plugin.TextCommand):
+    """Start server in the current file's directory"""
+    
+    def run(self, edit):
+        manager = ServerManager.get_instance()
+        
+        if manager.is_running():
+            # Server already running, just open the file
+            self.view.window().run_command("open_current_file_live_server")
+            return
+        
+        # Start server in current file's directory
+        file_path = self.view.file_name()
+        if file_path:
+            file_dir = os.path.dirname(file_path)
+            self.view.window().run_command("live_server_start", {"folders": [file_dir]})
+    
+    def is_enabled(self):
+        """Enable only for saved files"""
+        return bool(self.view.file_name())
+    
+    def is_visible(self):
+        """Show only for web files"""
+        if not self.view.file_name():
+            return False
+        
+        ext = os.path.splitext(self.view.file_name())[1].lower()
+        web_extensions = ['.html', '.htm', '.css', '.js', '.php', '.xml']
+        return ext in web_extensions
+
+class LiveServerChangePortCommand(sublime_plugin.WindowCommand):
+    """Change server port via input panel"""
+    
+    def run(self):
+        manager = ServerManager.get_instance()
+        
+        # Get current port
+        current_port = "8080"
+        if manager.is_running():
+            server = manager.get_server()
+            if server:
+                current_port = str(server.settings.port)
+        else:
+            settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+            current_port = str(settings.get('port', 8080))
+        
+        # Show input panel
+        self.window.show_input_panel(
+            "Live Server Port:",
+            current_port,
+            self.on_port_input,
+            None,
+            None
+        )
+    
+    def on_port_input(self, port_str):
+        """Handle port input"""
+        try:
+            port = int(port_str)
+            if not (1 <= port <= 65535):
+                sublime.error_message("Port must be between 1 and 65535")
+                return
+        except ValueError:
+            if port_str.strip() == "0":
+                port = 0  # Random port
+            else:
+                sublime.error_message("Invalid port number")
+                return
+        
+        # Update settings
+        settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+        settings.set('port', port)
+        sublime.save_settings("LiveServerPlus.sublime-settings")
+        
+        # Restart server if running
+        manager = ServerManager.get_instance()
+        if manager.is_running():
+            folders = manager.get_server().folders
+            manager.stop()
+            sublime.set_timeout(lambda: manager.start(folders), 100)
+            sublime.status_message(f"Restarting server on port {port}...")
+        else:
+            sublime.status_message(f"Port changed to {port}")
+
+class LiveServerShowLogCommand(sublime_plugin.WindowCommand):
+    """Show server log output panel"""
+    
+    def run(self):
+        self.window.run_command("show_panel", {"panel": "output.LiveServerPlus"})
+    
+    def is_enabled(self):
+        return ServerManager.get_instance().is_running()
+
+class LiveServerContextProvider(sublime_plugin.EventListener):
+    """Provides context for key bindings"""
+    
+    def on_query_context(self, view, key, operator, operand, match_all):
+        """Handle context queries for key bindings"""
+        
+        if key == "liveserver_running":
+            running = ServerManager.get_instance().is_running()
+            
+            if operator == sublime.OP_EQUAL:
+                return running == operand
+            elif operator == sublime.OP_NOT_EQUAL:
+                return running != operand
+                
+        return None
 
 def plugin_loaded():
     """Called by Sublime Text when plugin is loaded."""
