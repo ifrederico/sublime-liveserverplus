@@ -20,6 +20,15 @@
                     {
                         "caption": "Open Current File",
                         "command": "open_current_file_live_server"
+                    },
+                    {
+                        "caption": "Change Port...",
+                        "command": "live_server_change_port"
+                    },
+                    { "caption": "-" },
+                    {
+                        "caption": "Show Log",
+                        "command": "live_server_show_log"
                     }
                 ]
             }
