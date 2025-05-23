@@ -291,6 +291,9 @@ class Server(threading.Thread):
             import traceback
             error(traceback.format_exc())
         finally:
+            # IMPORTANT: Remove connection from the manager
+            self.connection_manager.remove_connection(conn)
+            
             self.cleanup_connection_thread(current_thread)
             try:
                 try:
