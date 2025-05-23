@@ -13,10 +13,21 @@
         "command": "open_current_file_live_server"
     },
     {
+        "caption": "Live Server Plus: Start Server Here",
+        "command": "live_server_start_here"
+    },
+    {
+        "caption": "Live Server Plus: Change Port",
+        "command": "live_server_change_port"
+    },
+    {
+        "caption": "Live Server Plus: Show Log",
+        "command": "live_server_show_log"
+    },
+    {
         "caption": "Live Server Plus: Settings",
         "command": "edit_settings",
         "args": {
-            
             "base_file": "${packages}/LiveServerPlus/LiveServerPlus.sublime-settings",
             "default": "// LiveServerPlus Settings - User\n{\n\t$0\n}\n"
         }
