@@ -219,8 +219,13 @@ class LiveServerStartHereCommand(sublime_plugin.TextCommand):
             self.view.window().run_command("live_server_start", {"folders": [file_dir]})
     
     def is_enabled(self):
-        """Enable only for saved files"""
-        return bool(self.view.file_name())
+        """
+        Enabled only when this view is a saved file.
+        """
+        return (
+            bool(self.view.file_name()) and      # saved to disk
+            not ServerManager.get_instance().is_running()
+        )
     
     def is_visible(self):
         """Show only for web files"""
