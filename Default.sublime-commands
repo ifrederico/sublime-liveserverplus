@@ -21,10 +21,6 @@
         "command": "live_server_change_port"
     },
     {
-        "caption": "Live Server Plus: Show Log",
-        "command": "live_server_show_log"
-    },
-    {
         "caption": "Live Server Plus: Settings",
         "command": "edit_settings",
         "args": {

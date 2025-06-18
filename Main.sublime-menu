@@ -24,11 +24,6 @@
                     {
                         "caption": "Change Port...",
                         "command": "live_server_change_port"
-                    },
-                    { "caption": "-" },
-                    {
-                        "caption": "Show Log",
-                        "command": "live_server_show_log"
                     }
                 ]
             }

@@ -4,7 +4,7 @@ import threading
 import os
 from .liveserverplus_lib.server import Server
 from .liveserverplus_lib.utils import open_in_browser
-from .liveserverplus_lib.logging import debug, info, warning, error, set_level, DEBUG, INFO, WARNING, ERROR
+from .liveserverplus_lib.logging import debug, info, warning, error
 
 class ServerManager:
     """Manages the lifecycle of LiveServerPlus server instances"""
@@ -23,30 +23,7 @@ class ServerManager:
     def __init__(self):
         self.server = None
         self.restart_pending = False
-        self._configure_logging()
-    
-    def _configure_logging(self):
-        """Configure logging based on settings"""
-        try:
-            settings = sublime.load_settings("LiveServerPlus.sublime-settings")
-            log_level = settings.get("log_level", "info").lower()
-            
-            if log_level == "debug":
-                set_level(DEBUG)
-            elif log_level == "info":
-                set_level(INFO)
-            elif log_level == "warning" or log_level == "warn":
-                set_level(WARNING)
-            elif log_level == "error":
-                set_level(ERROR)
-            else:
-                set_level(INFO)
-                
-            debug("Logging initialized at level: " + log_level)
-        except Exception as e:
-            # Fallback to default if there's an error
-            set_level(INFO)
-            info(f"Error configuring logging, using default level: {str(e)}")
+        debug("ServerManager initialized")
     
     def is_running(self):
         """Check if server is currently running"""
@@ -148,6 +125,7 @@ class ServerManager:
         """Proxy for server's file change handler"""
         server = self.get_server()
         if server:
+            debug(f"File changed, notifying server: {file_path}")
             server.on_file_change(file_path)
             return True
         return False

@@ -6,6 +6,7 @@ from fnmatch import fnmatch
 # Import Watchdog from the vendored location
 from .vendor.watchdog.observers import Observer
 from .vendor.watchdog.events import FileSystemEventHandler
+from .logging import debug, info, warning, error
 
 class FileWatcher(threading.Thread):
     """Watches for file changes in specified directories using Watchdog"""
@@ -38,13 +39,13 @@ class FileWatcher(threading.Thread):
         
         for folder in self.folders:
             if not os.path.exists(folder):
-                print(f"[LiveServerPlus] Skipping non-existent folder: {folder}")
+                warning(f"Skipping non-existent folder: {folder}")
                 continue
                 
             # Skip directories in the ignore list
             folder_name = os.path.basename(folder)
             if folder_name in self.settings.ignore_dirs:
-                print(f"[LiveServerPlus] Skipping ignored directory: {folder}")
+                info(f"Skipping ignored directory: {folder}")
                 continue
             
             try:
@@ -82,15 +83,15 @@ class FileWatcher(threading.Thread):
                         self._dir_count += 1
                         watched_dirs.append(web_dir)
                     except Exception as e:
-                        print(f"[LiveServerPlus] Could not watch directory {web_dir}: {e}")
+                        warning(f"Could not watch directory {web_dir}: {e}")
                 
                 if len(web_dirs_to_watch) > remaining_slots:
-                    print(f"[LiveServerPlus] Warning: Only watching {self._max_directories} directories to avoid resource issues")
+                    warning(f"Only watching {self._max_directories} directories to avoid resource issues")
             except Exception as e:
-                print(f"[LiveServerPlus] Error setting up watchdog for {folder}: {e}")
+                error(f"Error setting up watchdog for {folder}: {e}")
         
         # Print summary of watched directories
-        print(f"[LiveServerPlus] Watching {len(watched_dirs)} directories for changes")
+        info(f"Watching {len(watched_dirs)} directories for changes")
     
     def run(self):
         """Thread's run method - starts the observer and keeps thread alive"""
@@ -102,8 +103,6 @@ class FileWatcher(threading.Thread):
     
     def stop(self):
         """Stop the file watcher with a graceful timeout."""
-        from .logging import info, warning
-        
         info("Setting file watcher stop event")
         self._stop_event.set()
         
@@ -160,7 +159,7 @@ class WatchdogEventHandler(FileSystemEventHandler):
                 try:
                     self.watcher.debounced_callback(event.src_path)
                 except Exception as e:
-                    print(f"[LiveServerPlus] Error in file change callback: {e}")
+                    error(f"Error in file change callback: {e}")
     
     def on_created(self, event):
         """Handle file creation events"""
@@ -169,7 +168,7 @@ class WatchdogEventHandler(FileSystemEventHandler):
                 try:
                     self.watcher.debounced_callback(event.src_path)
                 except Exception as e:
-                    print(f"[LiveServerPlus] Error in file creation callback: {e}")
+                    error(f"Error in file creation callback: {e}")
     
     def on_deleted(self, event):
         """Handle file deletion events"""
@@ -178,7 +177,7 @@ class WatchdogEventHandler(FileSystemEventHandler):
                 try:
                     self.watcher.debounced_callback(event.src_path)
                 except Exception as e:
-                    print(f"[LiveServerPlus] Error in file deletion callback: {e}")
+                    error(f"Error in file deletion callback: {e}")
     
     def on_moved(self, event):
         """Handle file move/rename events"""
@@ -187,4 +186,4 @@ class WatchdogEventHandler(FileSystemEventHandler):
                 try:
                     self.watcher.debounced_callback(event.dest_path)
                 except Exception as e:
-                    print(f"[LiveServerPlus] Error in file move callback: {e}")
+                    error(f"Error in file move callback: {e}")

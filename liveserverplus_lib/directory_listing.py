@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Any
 import sublime
 from string import Template
+from .logging import debug, info, warning, error
 
 
 class DirectoryListing:
@@ -61,7 +62,7 @@ class DirectoryListing:
             raw_template = sublime.load_resource(resource_path)
             self.template = raw_template
         except Exception as e:
-            print(f"Error loading template: {e}")
+            error(f"Error loading template: {e}")
             self.template = "<html><body>Error loading template</body></html>"
         
     def get_file_info(self, path: str, entry: os.DirEntry = None) -> Dict[str, Any]:
@@ -94,7 +95,7 @@ class DirectoryListing:
                     'modified': datetime.fromtimestamp(stat_info.st_mtime).strftime('%Y-%m-%d %H:%M')
                 }
         except Exception as e:
-            print(f"Error getting file info for {path}: {e}")
+            error(f"Error getting file info for {path}: {e}")
             return None
 
     def generate_items_list(self, dir_path: str, include_hidden: bool = False) -> List[Dict[str, Any]]:
@@ -112,7 +113,7 @@ class DirectoryListing:
             # Sort: directories first, then files, all alphabetically
             return sorted(items, key=lambda x: (x['type'] != 'directory', x['name'].lower()))
         except Exception as e:
-            print(f"Error generating items list for {dir_path}: {e}")
+            error(f"Error generating items list for {dir_path}: {e}")
             return []
 
     def generate_listing(self, dir_path: str, url_path: str, root_path: str) -> bytes:
@@ -188,5 +189,5 @@ class DirectoryListing:
                 size /= 1024
             return f"{size:.1f} TB"
         except Exception as e:
-            print(f"Error formatting size: {e}")
+            error(f"Error formatting size: {e}")
             return "-"

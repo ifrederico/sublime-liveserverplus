@@ -105,14 +105,11 @@
     },
 
     // ==========================================
-    // Logging Configuration
+    // Logging
     // ==========================================
 
-    // Log level (debug, info, warning, error)
-    "log_level": "info",
-
-    // Enable file logging to the Packages/User/LiveServerPlus/logs directory
-    "file_logging": false,
+    // Enable console logging (false = complete silence)
+    "logging": false,
 
     // ==========================================
     // Connection Settings

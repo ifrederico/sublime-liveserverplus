@@ -1,5 +1,6 @@
 import sublime
 from .utils import get_free_port
+from .logging import debug, info, warning, error
 
 class ServerSettings:
     """Manages server settings with live reload capability and project support."""
@@ -31,12 +32,12 @@ class ServerSettings:
         """Merge project settings with base settings"""
         merged = {}
         
-        # Get all base settings
+        # Get all base settings (removed old logging settings)
         base_keys = ['host', 'port', 'browser', 'open_browser_on_start', 
                      'allowed_file_types', 'ignore_dirs', 'live_reload',
                      'enable_compression', 'cors_enabled', 'status_bar_enabled',
                      'max_file_size', 'poll_interval', 'connections', 'cache',
-                     'log_level', 'file_logging']
+                     'logging']
         
         for key in base_keys:
             merged[key] = self._settings.get(key)
@@ -88,14 +89,14 @@ class ServerSettings:
             # Use a free port in the dynamic range (49152-65535).
             free_port = get_free_port(49152, 65535)
             if free_port is None:
-                print("No free port found in range 49152-65535; using default port 8080")
+                warning("No free port found in range 49152-65535; using default port 8080")
                 free_port = 8080
             self._ephemeral_port_cache = free_port
             return free_port
         else:
             # Validate user-supplied port
             if not isinstance(configured_port, int) or configured_port < 1 or configured_port > 65535:
-                print(f"Invalid port {configured_port}, using default port 8080")
+                warning(f"Invalid port {configured_port}, using default port 8080")
                 self._ephemeral_port_cache = 8080
                 return 8080
 

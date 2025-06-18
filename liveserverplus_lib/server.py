@@ -107,14 +107,14 @@ class Server(threading.Thread):
             conn.send(b"\r\n".join(headers))
             return True
         except Exception as e:
-            print(f"Error sending response: {e}")
+            error(f"Error sending response: {e}")
             return False
     ### End of common methods ###
 
     def run(self):
         """Start the server"""
         try:
-            print("[LiveServerPlus] Server starting...")
+            info("Server starting...")
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             
@@ -127,24 +127,24 @@ class Server(threading.Thread):
             # Try to bind to the configured port
             try:
                 self.sock.bind((host, port))
-                print(f"[LiveServerPlus] Successfully bound to {host}:{port}")
+                info(f"Successfully bound to {host}:{port}")
             except OSError as e:
                 if e.errno == errno.EADDRINUSE:
                     # If the port is in use, attempt to find a free port
-                    print(f"[LiveServerPlus] Port {port} is in use, searching for free port...")
+                    warning(f"Port {port} is in use, searching for free port...")
                     free_port = get_free_port(49152, 65535)
                     if free_port is None:
                         self.status.update('error', port, f"Port {port} is in use and no free port is available.")
-                        print(f"[LiveServerPlus] Error: Port {port} is in use and no free port is available.")
+                        error(f"Port {port} is in use and no free port is available.")
                         return
                     else:
-                        print(f"[LiveServerPlus] Port {port} is in use. Falling back to free port {free_port}.")
+                        info(f"Port {port} is in use. Falling back to free port {free_port}.")
                         self.settings._settings.set('port', free_port)
                         port = free_port
                         self.sock.bind((host, port))
-                        print(f"[LiveServerPlus] Successfully bound to {host}:{port}")
+                        info(f"Successfully bound to {host}:{port}")
                 else:
-                    print(f"[LiveServerPlus] Unexpected error binding to port: {e}")
+                    error(f"Unexpected error binding to port: {e}")
                     raise  # Re-raise unexpected OSErrors
             
             self.sock.listen(5)
@@ -152,16 +152,16 @@ class Server(threading.Thread):
             # Check live_reload setting
             live_reload_settings = self.settings._settings.get("live_reload", {})
             if live_reload_settings.get("enabled", False):
-                print("[LiveServerPlus] live_reload.enabled is True => Skipping FileWatcher")
+                info("live_reload.enabled is True => Skipping FileWatcher")
                 self.file_watcher = None
             else:
-                print("[LiveServerPlus] live_reload.enabled is False => Starting Watchdog FileWatcher")
+                info("live_reload.enabled is False => Starting Watchdog FileWatcher")
                 self.file_watcher = FileWatcher(self.folders, self.on_file_change, self.settings)
                 self.file_watcher.start()
             
             # Update status with the actual port the server is running on
             self.status.update('running', port)
-            print(f"[LiveServerPlus] Server running on {host}:{port}")
+            info(f"Server running on {host}:{port}")
             
             # Main connection loop
             while not self._stop_flag:
@@ -173,12 +173,12 @@ class Server(threading.Thread):
                         conn.close()
                 except Exception as e:
                     if not self._stop_flag:
-                        print(f"[LiveServerPlus] Error accepting connection: {e}")
+                        error(f"Error accepting connection: {e}")
             
         except Exception as e:
-            print(f"[LiveServerPlus] Critical server error: {e}")
+            error(f"Critical server error: {e}")
             import traceback
-            traceback.print_exc()
+            error(traceback.format_exc())
             self.status.update('error', port, str(e))
             return
 
@@ -487,7 +487,7 @@ class Server(threading.Thread):
                     content = compressed
                     is_compressed = True
             except Exception as e:
-                print(f"Compression error: {e}")
+                error(f"Compression error: {e}")
 
         return self._send_response(conn, 200, content, mime_type, add_cors=self.settings.cors_enabled, compressed=is_compressed)
 
@@ -632,7 +632,7 @@ class Server(threading.Thread):
     def on_file_change(self, file_path):
         """Handle file changes by notifying the WebSocket clients"""
         filename = os.path.basename(file_path)
-        print(f"[LiveServerPlus] File changed: {filename}")
+        info(f"File changed: {filename}")
         self.websocket.notify_clients(file_path)
         
     def stop(self):

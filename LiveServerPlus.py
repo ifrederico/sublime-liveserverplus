@@ -16,6 +16,7 @@ if VENDOR_PATH not in sys.path:
 
 # Now the imports will work
 from .liveserverplus_lib.utils import open_in_browser
+from .liveserverplus_lib.logging import debug, info, warning, error
 from .ServerManager import ServerManager
 
 def is_server_running():
@@ -114,7 +115,22 @@ class LiveServerStartCommand(sublime_plugin.WindowCommand):
         if manager.start(folders):
             server = manager.get_server()
             if server and server.settings.browser_open_on_start:
-                manager.open_in_browser("/")
+                # Try to open the current file instead of root
+                view = self.window.active_view()
+                if view and view.file_name() and manager.is_file_allowed(view.file_name()):
+                    # Get relative path from the current file
+                    file_path = view.file_name()
+                    rel_path = None
+                    for folder in folders:
+                        if file_path.startswith(folder):
+                            rel_path = os.path.relpath(file_path, folder)
+                            break
+                    if rel_path:
+                        manager.open_in_browser(rel_path.replace(os.sep, '/'))
+                    else:
+                        manager.open_in_browser("/")
+                else:
+                    manager.open_in_browser("/")
                 
     def is_enabled(self):
         return not ServerManager.get_instance().is_running()
@@ -269,15 +285,6 @@ class LiveServerChangePortCommand(sublime_plugin.WindowCommand):
         else:
             sublime.status_message(f"Port changed to {port}")
 
-class LiveServerShowLogCommand(sublime_plugin.WindowCommand):
-    """Show server log output panel"""
-    
-    def run(self):
-        self.window.run_command("show_panel", {"panel": "output.LiveServerPlus"})
-    
-    def is_enabled(self):
-        return ServerManager.get_instance().is_running()
-
 class LiveServerContextProvider(sublime_plugin.EventListener):
     """Provides context for key bindings"""
     
@@ -296,12 +303,14 @@ class LiveServerContextProvider(sublime_plugin.EventListener):
 
 def plugin_loaded():
     """Called by Sublime Text when plugin is loaded."""
+    info("Plugin loaded")
     # Initialize ServerManager singleton
     ServerManager.get_instance()
 
 def plugin_unloaded():
     """Called by Sublime Text when plugin is unloaded."""
     try:
+        info("Plugin unloading")
         manager = ServerManager.get_instance()
         if manager.is_running():
             # Update status to "Server closing" before stopping
@@ -312,8 +321,9 @@ def plugin_unloaded():
         
         # Clear singleton instance to prevent memory leaks
         ServerManager._instance = None
+        info("Plugin unloaded successfully")
     except Exception as e:
-        print(f"Error during plugin unload: {e}")
+        error(f"Error during plugin unload: {e}")
 
 
 # ----------------------------------------------------
@@ -352,6 +362,7 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
             return
         
         # If we got here => immediate reload
+        debug(f"File saved, triggering reload: {file_path}")
         manager.on_file_change(file_path)
 
     def on_modified_async(self, view):
@@ -383,12 +394,14 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
         
         if delay_ms <= 0:
             # no debounce, immediate
+            debug(f"File modified, triggering immediate reload: {file_path}")
             manager.on_file_change(file_path)
             return
         
         # Debounce with a callback
         def check_debounce():
             if (time.time() - _last_modified[file_path]) >= (delay_ms / 1000.0):
+                debug(f"File modified, triggering debounced reload: {file_path}")
                 manager.on_file_change(file_path)
         
         sublime.set_timeout_async(check_debounce, delay_ms)

@@ -5,6 +5,7 @@ import socket
 import threading
 import os
 import sublime
+from .logging import debug, info, warning, error
 
 class WebSocketHandler:
     """Handles WebSocket connections and live reload functionality"""
@@ -26,7 +27,7 @@ class WebSocketHandler:
             template_str = sublime.load_resource(resource_path)
             self.INJECTED_CODE = template_str
         except Exception as e:
-            print(f"Error loading WebSocket template: {e}")
+            error(f"Error loading WebSocket template: {e}")
             # Fallback to an empty script if the template can't be loaded
             self.INJECTED_CODE = "<script></script></body>"
         
@@ -90,7 +91,7 @@ class WebSocketHandler:
         try:
             frame = self._create_websocket_frame(message)
         except Exception as e:
-            print(f"Error creating frame: {e}")
+            error(f"Error creating frame: {e}")
             return
 
         # Take a snapshot of the current clients under lock
@@ -103,7 +104,7 @@ class WebSocketHandler:
             try:
                 client.send(frame)
             except (socket.error, OSError) as e:
-                print(f"Error sending to client: {e}")
+                debug(f"Error sending to client: {e}")
                 dead_clients.add(client)
 
         # Reacquire lock to remove dead clients
