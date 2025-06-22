@@ -81,19 +81,7 @@ Add keyboard shortcuts via **`Preferences > Key Bindings`**:
 
 Open via **`Preferences > Package Settings > Live Server Plus > Settings`**.
 
-Common settings explained:
-- `host`: Server address (e.g., "localhost").
-- `port`: Server port (`0` for automatic).
-- `open_browser_on_start`: Auto-open browser.
-- `browser`: Specific browser (e.g., "chrome").
-- `enable_compression`: Gzip compression (faster loading).
-- `allowed_file_types`: Extensions served inline.
-- `live_reload`: Real-time browser update options:
-  - `enabled`: Toggle reload feature.
-  - `css_injection`: Inject CSS without full reload.
-  - `delay`: Wait time before reloading.
-
-> **Note:** Restart the server after changing settings.
+**Note:** Restart the server after changing settings.
 
 ---
 
