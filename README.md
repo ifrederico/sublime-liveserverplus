@@ -107,7 +107,7 @@ Common settings explained:
 ## Known Limitations
 
 - No built-in HTTPS support. Use reverse proxy if HTTPS is required.
-- File watcher limits directories (50 max). Enable Sublime Events for larger projects.
+- File watcher limits directories (50 max).
 
 ---
 
