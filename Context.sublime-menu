@@ -19,6 +19,13 @@
                 "caption": "-"
             },
             {
+                "command": "live_server_toggle_live_reload",
+                "mnemonic": "L"
+            },
+            {
+                "caption": "-"
+            },
+            {
                 "caption": "Stop Server",
                 "command": "live_server_stop"
             },

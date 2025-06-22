@@ -1,142 +1,18 @@
 # liveserverplus_lib/utils.py
+"""General utilities - cleaned up version with imports from new modules"""
 import os
 import gzip
 import webbrowser
-import pathlib
 import io
+import platform
 from urllib.parse import urlparse, unquote
 from .logging import debug, info, warning, error
+from .constants import SKIP_COMPRESSION_TYPES, BROWSER_COMMANDS
 
-MIME_TYPES = {
-    # Web
-    '.html': 'text/html',
-    '.htm': 'text/html',
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.mjs': 'application/javascript',
-    '.json': 'application/json',
-    '.xml': 'application/xml',
-    '.wasm': 'application/wasm',
-    
-    # Images
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.svg': 'image/svg+xml',
-    '.ico': 'image/x-icon',
-    '.webp': 'image/webp',
-    
-    # Fonts
-    '.woff': 'font/woff',
-    '.woff2': 'font/woff2',
-    '.ttf': 'font/ttf',
-    '.eot': 'application/vnd.ms-fontobject',
-    
-    # Media
-    '.mp3': 'audio/mpeg',
-    '.wav': 'audio/wav',
-    '.mp4': 'video/mp4',
-    '.webm': 'video/webm',
-    '.ogg': 'audio/ogg',
-    
-    # Documents
-    '.pdf': 'application/pdf',
-    '.doc': 'application/msword',
-    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    '.txt': 'text/plain',
-    
-    # Development
-    '.map': 'application/json',
-    '.ts': 'application/typescript',
-    '.tsx': 'application/typescript',
-    '.jsx': 'application/javascript'
-}
-
-# Security-related functions
-def normalize_path(path):
-    """
-    Normalize a path to prevent path traversal attacks.
-    
-    Args:
-        path (str): The path to normalize
-        
-    Returns:
-        str: Normalized path or None if the path is suspicious
-    """
-    try:
-        # Unquote URL encoded characters
-        path = unquote(path)
-        
-        # Handle common problematic patterns
-        if '../' in path or '..\\' in path or '//' in path or '\\\\' in path:
-            warning(f"Suspicious path detected: {path}")
-            return None
-            
-        # Use pathlib for secure path normalization
-        normalized = pathlib.Path(path).resolve()
-        
-        # Convert to string for consistency
-        return str(normalized)
-    except Exception as e:
-        error(f"Path normalization error: {e}")
-        return None
-
-def is_path_safe(base_folder, requested_path, strict=True):
-    """
-    Verify that a requested path doesn't escape the base folder.
-    
-    Args:
-        base_folder (str): Base directory that should contain the path
-        requested_path (str): Requested path to check
-        strict (bool): If True, checks if path is strictly a subpath
-                      If False, allows the path to be equal to base_folder
-        
-    Returns:
-        bool: True if path is safe, False otherwise
-    """
-    try:
-        base_folder = os.path.abspath(base_folder)
-        base_path = pathlib.Path(base_folder).resolve()
-        
-        # Handle both absolute paths and relative paths
-        if os.path.isabs(requested_path):
-            full_path = pathlib.Path(requested_path).resolve()
-        else:
-            full_path = pathlib.Path(os.path.join(base_folder, requested_path)).resolve()
-        
-        # Check if full_path is within base_path
-        if strict:
-            # Strict mode: path must be a subpath
-            return str(full_path).startswith(str(base_path)) and full_path != base_path
-        else:
-            # Non-strict mode: path can be equal to base_path
-            return str(full_path).startswith(str(base_path))
-    except Exception as e:
-        error(f"Path safety check error: {e}")
-        return False
+# Import from new centralized modules
+from .file_utils import get_mime_type, is_binary_file
 
 # File detection and handling
-def get_mime_type(path):
-    """
-    Get MIME type for file path with better error handling
-    
-    Args:
-        path (str): File path
-        
-    Returns:
-        str: MIME type or 'application/octet-stream' if unknown
-    """
-    if not path:
-        return 'application/octet-stream'
-        
-    try:
-        ext = os.path.splitext(path.lower())[1]
-        return MIME_TYPES.get(ext, 'application/octet-stream')
-    except Exception as e:
-        error(f"Error determining MIME type for {path}: {e}")
-        return 'application/octet-stream'
-
 def detect_encoding(file_path, sample_size=4096):
     """
     Attempt to detect file encoding by reading a sample.
@@ -190,40 +66,6 @@ def detect_encoding(file_path, sample_size=4096):
     except Exception as e:
         warning(f"Error detecting encoding for {file_path}: {e}")
         return 'utf-8'
-
-def is_binary_file(file_path):
-    """
-    Check if file is binary
-    
-    Args:
-        file_path (str): Path to file
-        
-    Returns:
-        bool: True if binary, False otherwise
-    """
-    try:
-        # Quick check based on extension
-        ext = os.path.splitext(file_path.lower())[1]
-        if ext in {'.jpg', '.jpeg', '.png', '.gif', '.pdf', '.zip', 
-                  '.exe', '.dll', '.so', '.mp3', '.mp4', '.webm'}:
-            return True
-            
-        # Content-based check
-        with open(file_path, 'rb') as f:
-            chunk = f.read(1024)
-            # Check for null bytes (common in binary files)
-            if b'\x00' in chunk:
-                return True
-                
-            # Check for high concentration of non-ASCII bytes
-            non_ascii = sum(1 for b in chunk if b > 127)
-            if non_ascii > len(chunk) * 0.3:  # More than 30% non-ASCII
-                return True
-                
-            return False
-    except Exception as e:
-        warning(f"Error checking if file is binary: {e}")
-        return True
 
 def create_file_reader(file_path, chunk_size=8192):
     """
@@ -342,34 +184,6 @@ def should_skip_compression(mime_type):
     Returns:
         bool: True if compression should be skipped
     """
-    SKIP_COMPRESSION_TYPES = {
-        # Images
-        'image/jpeg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'image/x-icon',
-        
-        # Audio/Video
-        'audio/mpeg',
-        'audio/mp4',
-        'video/mp4',
-        'video/webm',
-        'audio/ogg',
-        
-        # Archives
-        'application/zip',
-        'application/x-rar-compressed',
-        'application/x-7z-compressed',
-        
-        # PDFs
-        'application/pdf',
-        
-        # Fonts
-        'font/woff',
-        'font/woff2',
-    }
-    
     return mime_type in SKIP_COMPRESSION_TYPES
 
 # Browser and network utilities
@@ -381,9 +195,6 @@ def open_in_browser(url, browser_name=None):
         url (str): URL to open
         browser_name (str, optional): Browser to use ('chrome', 'firefox', 'safari', 'edge')
     """
-    import webbrowser
-    import platform
-
     try:
         if not browser_name:
             # Use default browser
@@ -394,33 +205,12 @@ def open_in_browser(url, browser_name=None):
         # Handle specific browsers based on platform
         system = platform.system().lower()
         browser_name = browser_name.lower()
-        
-        browser_commands = {
-            'chrome': {
-                'darwin': 'google chrome',
-                'linux': 'google-chrome',
-                'windows': 'chrome'
-            },
-            'firefox': {
-                'darwin': 'firefox',
-                'linux': 'firefox',
-                'windows': 'firefox'
-            },
-            'safari': {
-                'darwin': 'safari'
-            },
-            'edge': {
-                'darwin': 'microsoft-edge',
-                'linux': 'microsoft-edge',
-                'windows': 'msedge'
-            }
-        }
 
         # Get browser command for current platform
-        if browser_name in browser_commands:
-            if system in browser_commands[browser_name]:
+        if browser_name in BROWSER_COMMANDS:
+            if system in BROWSER_COMMANDS[browser_name]:
                 debug(f"Opening URL in {browser_name} on {system}: {url}")
-                browser = webbrowser.get(browser_commands[browser_name][system])
+                browser = webbrowser.get(BROWSER_COMMANDS[browser_name][system])
                 browser.open(url)
                 return
 
@@ -477,30 +267,6 @@ def get_free_port(start_port=8000, max_port=9000):
     
     warning(f"No free ports found in range {start_port}-{max_port}")
     return None
-
-def get_relative_path(root_path, file_path):
-    """
-    Get relative path from root to file
-    
-    Args:
-        root_path (str): Root directory path
-        file_path (str): File path
-        
-    Returns:
-        str: Relative path or None if outside root
-    """
-    try:
-        rel_path = os.path.relpath(file_path, root_path)
-        
-        # Check if path is outside the root
-        if rel_path.startswith('..'):
-            warning(f"Path {file_path} is outside of root {root_path}")
-            return None
-            
-        return rel_path
-    except ValueError as e:
-        error(f"Error computing relative path: {e}")
-        return None
 
 # HTTP utilities
 def create_response_headers(content_length, content_type, compressed=False, extra_headers=None):

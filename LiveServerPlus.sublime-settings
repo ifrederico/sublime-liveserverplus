@@ -90,21 +90,6 @@
     ],
 
     // ==========================================
-    // Cache Settings
-    // ==========================================
-
-    "cache": {
-        // Enable in-memory file caching
-        "enabled": true,
-        
-        // Maximum number of files to keep in cache
-        "max_files": 50,
-        
-        // Maximum age of cache entries in seconds
-        "max_age": 300
-    },
-
-    // ==========================================
     // Logging
     // ==========================================
 

@@ -5,54 +5,13 @@ from typing import Dict, List, Any
 import sublime
 from string import Template
 from .logging import debug, info, warning, error
+from .constants import FILE_ICONS, DEFAULT_FILE_ICON, DIRECTORY_ICON
+from .text_utils import format_file_size, extract_file_extension
+from .file_utils import is_file_allowed
 
 
 class DirectoryListing:
     """Handles directory listing pages"""
-
-    # File type icons mapping
-    ICONS = {
-        # HTML/Web
-        '.html': '📄',
-        '.htm': '📄',
-        '.css': '🎨',
-        '.js': '📜',
-        '.json': '📝',
-        '.xml': '📋',
-        
-        # Images
-        '.jpg': '🖼️',
-        '.jpeg': '🖼️',
-        '.png': '🖼️',
-        '.gif': '🖼️',
-        '.svg': '🖼️',
-        '.ico': '🖼️',
-        
-        # Documents
-        '.pdf': '📕',
-        '.doc': '📘',
-        '.docx': '📘',
-        '.txt': '📝',
-        '.md': '📝',
-        
-        # Code
-        '.py': '🐍',
-        '.jsx': '📜',
-        '.ts': '📜',
-        '.tsx': '📜',
-        
-        # Archives
-        '.zip': '📦',
-        '.rar': '📦',
-        '.7z': '📦',
-        
-        # Media
-        '.mp3': '🎵',
-        '.wav': '🎵',
-        '.mp4': '🎬',
-        '.avi': '🎬',
-        '.mov': '🎬'
-    }
 
     def __init__(self, settings=None):
         self.settings = settings
@@ -80,18 +39,18 @@ class DirectoryListing:
             if is_dir:
                 return {
                     'name': name,
-                    'icon': "📁",
+                    'icon': DIRECTORY_ICON,
                     'type': "directory",
                     'size': "-",
                     'modified': datetime.fromtimestamp(stat_info.st_mtime).strftime('%Y-%m-%d %H:%M')
                 }
             else:
-                ext = os.path.splitext(name)[1].lower()
+                ext = extract_file_extension(name)
                 return {
                     'name': name,
-                    'icon': self.ICONS.get(ext, '📄'),
+                    'icon': FILE_ICONS.get(ext, DEFAULT_FILE_ICON),
                     'type': "file",
-                    'size': self._format_size(stat_info.st_size),
+                    'size': format_file_size(stat_info.st_size),
                     'modified': datetime.fromtimestamp(stat_info.st_mtime).strftime('%Y-%m-%d %H:%M')
                 }
         except Exception as e:
@@ -135,7 +94,7 @@ class DirectoryListing:
                 parent_path = parent or "/"
                 parent_link = f'''
                     <a href="{parent_path}" class="parent-link">
-                        <span class="icon">📁</span>
+                        <span class="icon">{DIRECTORY_ICON}</span>
                         Parent Directory
                     </a>
                 '''
@@ -158,10 +117,9 @@ class DirectoryListing:
             
     def _generate_item_html(self, item: Dict[str, Any]) -> str:
         """Generate HTML for a single item row"""
-        # Only add download attribute for non-allowed files that are not directories
-        ext = os.path.splitext(item['name'])[1].lower()
-        is_allowed = any(ext == allowed_ext.lower() 
-                        for allowed_ext in (self.settings.allowed_file_types if self.settings else []))
+        # Use centralized file checking
+        allowed_extensions = self.settings.allowed_file_types if self.settings else []
+        is_allowed = is_file_allowed(item['name'], allowed_extensions)
         
         # Only add download attribute if it's a file (not a directory) and not allowed
         download_attr = ' download' if not is_allowed and item['type'] != 'directory' else ''
@@ -178,16 +136,3 @@ class DirectoryListing:
                 <td class="modified">{item['modified']}</td>
             </tr>
         """
-
-    @staticmethod
-    def _format_size(size: int) -> str:
-        """Format file size in human readable format"""
-        try:
-            for unit in ['B', 'KB', 'MB', 'GB']:
-                if size < 1024:
-                    return f"{size:.1f} {unit}"
-                size /= 1024
-            return f"{size:.1f} TB"
-        except Exception as e:
-            error(f"Error formatting size: {e}")
-            return "-"

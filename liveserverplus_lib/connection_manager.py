@@ -2,7 +2,10 @@
 import threading
 import time
 import collections
-from .logging import debug, info, warning, error
+from .logging import info, error
+from .http_utils import HTTPResponse
+from .error_pages import ErrorPages
+
 
 class ConnectionManager:
     """Manages active connections to prevent resource exhaustion"""
@@ -20,7 +23,7 @@ class ConnectionManager:
         """Initialize the connection manager"""
         self.active_connections = set()
         self.connection_lock = threading.Lock()
-        self.max_connections = 100
+        self.max_threads = 10  # Simplified to just max_threads
         self.requests_per_client = collections.defaultdict(int)
         self.last_cleanup = time.time()
         self.cleanup_interval = 60  # Cleanup old data every minute
@@ -33,12 +36,12 @@ class ConnectionManager:
             settings: Server settings object
         """
         if hasattr(settings, '_settings'):
-            conn_settings = settings._settings.get('connections', {})
-            self.max_connections = conn_settings.get('max_concurrent', 100)
+            # Simplified: just get max_threads
+            self.max_threads = settings._settings.get('max_threads', 10)
             
     def add_connection(self, conn, addr):
         """
-        Add a new connection if below maximum
+        Add a new connection if below maximum. Send 503 if server is busy.
         
         Args:
             conn: Socket connection
@@ -54,16 +57,29 @@ class ConnectionManager:
                 self._cleanup()
                 self.last_cleanup = current_time
                 
-            # Check if we're at the connection limit
-            if len(self.active_connections) >= self.max_connections:
-                warning(f"Connection limit reached ({self.max_connections}), rejecting connection from {addr}")
+            # Check if we're at the connection limit (using max_threads as limit)
+            if len(self.active_connections) >= self.max_threads:
+                error(f"Connection limit reached ({self.max_threads}), rejecting connection from {addr}")
+                
+                # Send 503 Service Unavailable response using ErrorPages
+                try:
+                    error_html = ErrorPages.get_503_page(retry_after=5)
+                    
+                    response = HTTPResponse(503)
+                    response.set_header('Content-Type', 'text/html; charset=utf-8')
+                    response.set_header('Retry-After', '5')
+                    response.set_body(error_html)
+                    response.send(conn)
+                except Exception as e:
+                    error(f"Failed to send 503 response: {e}")
+                
                 return False
                 
             # Record the connection
             self.active_connections.add(conn)
             self.requests_per_client[addr[0]] += 1
             
-            debug(f"New connection from {addr}, total active: {len(self.active_connections)}")
+            info(f"New connection from {addr}, total active: {len(self.active_connections)}")
             return True
             
     def remove_connection(self, conn):
@@ -76,6 +92,7 @@ class ConnectionManager:
         with self.connection_lock:
             if conn in self.active_connections:
                 self.active_connections.remove(conn)
+                info(f"Connection removed, total active: {len(self.active_connections)}")
                 
     def _cleanup(self):
         """Clean up stale connections and request data"""
@@ -90,7 +107,7 @@ class ConnectionManager:
         for client_ip in stale_entries:
             del self.requests_per_client[client_ip]
             
-        debug(f"Cleaned up connection data, active connections: {len(self.active_connections)}")
+        info(f"Cleaned up connection data, active connections: {len(self.active_connections)}")
     
     def get_stats(self):
         """
@@ -112,7 +129,7 @@ class ConnectionManager:
             
             return {
                 'active_connections': active_count,
-                'max_connections': self.max_connections,
+                'max_threads': self.max_threads,
                 'unique_clients': unique_clients,
                 'top_clients': [{'ip': ip, 'requests': count} for ip, count in top_clients]
             }

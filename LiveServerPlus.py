@@ -263,16 +263,18 @@ class LiveServerChangePortCommand(sublime_plugin.WindowCommand):
     
     def on_port_input(self, port_str):
         """Handle port input"""
-        try:
-            port = int(port_str)
-            if not (1 <= port <= 65535):
-                sublime.error_message("Port must be between 1 and 65535")
-                return
-        except ValueError:
-            if port_str.strip() == "0":
-                port = 0  # Random port
-            else:
+        port_str = port_str.strip()
+        if port_str == "0":
+            port = 0 # Random port
+        else:
+            try:
+                port = int(port_str)
+            except ValueError:
                 sublime.error_message("Invalid port number")
+                return
+            
+            if not (1 <= port <= 65535):
+                sublime.error_message("Port must be between 1 and 65535, or 0 for random")
                 return
         
         # Update settings
@@ -289,6 +291,57 @@ class LiveServerChangePortCommand(sublime_plugin.WindowCommand):
             sublime.status_message(f"Restarting server on port {port}...")
         else:
             sublime.status_message(f"Port changed to {port}")
+
+class LiveServerToggleLiveReloadCommand(sublime_plugin.WindowCommand):
+    """Toggle live reload on/off"""
+    
+    def run(self):
+        settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+        live_reload = settings.get("live_reload", {})
+        current_state = live_reload.get("enabled", False)
+        
+        # Toggle the state
+        live_reload["enabled"] = not current_state
+        settings.set("live_reload", live_reload)
+        sublime.save_settings("LiveServerPlus.sublime-settings")
+        
+        # Show status message
+        status = "enabled" if live_reload["enabled"] else "disabled"
+        
+        # If server is running, stop it and inform user to restart
+        manager = ServerManager.get_instance()
+        if manager.is_running():
+            manager.stop()
+            sublime.status_message(f"Live reload {status}. Server stopped - please restart the server for changes to take effect.")
+            
+            # Show an alert dialog for better visibility
+            sublime.message_dialog(
+                f"Live reload has been {status}.\n\n"
+                "The server has been stopped. Please start it again for the changes to take effect."
+            )
+        else:
+            sublime.status_message(f"Live reload {status}")
+    
+    def is_enabled(self):
+        """Always enabled when editing web files"""
+        view = self.window.active_view()
+        if not view or not view.file_name():
+            return False
+            
+        ext = os.path.splitext(view.file_name())[1].lower()
+        web_extensions = ['.html', '.htm', '.css', '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte']
+        return ext in web_extensions
+    
+    def description(self):
+        """Dynamic menu text based on current state"""
+        settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+        live_reload = settings.get("live_reload", {})
+        is_enabled = live_reload.get("enabled", False)
+        
+        if is_enabled:
+            return "Disable Live Reload"
+        else:
+            return "Enable Live Reload"
 
 class LiveServerContextProvider(sublime_plugin.EventListener):
     """Provides context for key bindings"""
@@ -399,14 +452,16 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
         
         if delay_ms <= 0:
             # no debounce, immediate
-            debug(f"File modified, triggering immediate reload: {file_path}")
-            manager.on_file_change(file_path)
+            debug(f"File modified, auto-saving and triggering immediate reload: {file_path}")
+            view.run_command('save')  # Auto-save the file
+            # The on_post_save_async will handle the reload
             return
         
         # Debounce with a callback
         def check_debounce():
             if (time.time() - _last_modified[file_path]) >= (delay_ms / 1000.0):
-                debug(f"File modified, triggering debounced reload: {file_path}")
-                manager.on_file_change(file_path)
+                debug(f"File modified, auto-saving and triggering debounced reload: {file_path}")
+                view.run_command('save')  # Auto-save the file
+                # The on_post_save_async will handle the reload
         
         sublime.set_timeout_async(check_debounce, delay_ms)

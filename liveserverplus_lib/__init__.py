@@ -9,38 +9,95 @@ __version__ = '2.0.0'
 
 # Define public API
 __all__ = [
+    # Main server components
     'Server',
     'WebSocketHandler',
     'FileWatcher',
     'ServerSettings',
     'ServerStatus',
+    
+    # HTTP utilities
+    'HTTPRequest',
+    'HTTPResponse',
+    'send_error_response',
+    'send_options_response',
+    
+    # File serving
+    'FileServer',
+    'RequestHandler',
+    
+    # General utilities
     'get_mime_type',
     'compress_data',
+    'stream_compress_data',
+    'detect_encoding',
+    'create_file_reader',
+    'get_free_port',
+    'open_in_browser',
+    'should_skip_compression',
+    
+    # Text utilities
+    'calculate_similarity',
+    'find_similar_files',
+    'inject_before_tag',
+    'format_file_size',
+    'extract_file_extension',
+    'is_text_file',
+    
+    # Logging
     'debug', 
     'info', 
     'warning', 
     'error',
-    'DEBUG',
-    'INFO',
-    'WARNING',
-    'ERROR',
-    'CacheManager',
-    'ConnectionManager'
+    
+    # Managers
+    'ConnectionManager',
+    
+    # UI Components
+    'DirectoryListing',
+    'ErrorPages',
+    
+    # Constants
+    'MIME_TYPES',
+    'FILE_ICONS',
+    'DEFAULT_SETTINGS',
+    'BROWSER_COMMANDS'
 ]
 
 # Base utilities that don't depend on other modules
-from .utils import get_mime_type, compress_data
+from .utils import (compress_data, stream_compress_data,
+                   detect_encoding, create_file_reader, get_free_port, 
+                   open_in_browser, should_skip_compression)
 from .settings import ServerSettings
 from .status import ServerStatus
-from .logging import debug, info, warning, error, DEBUG, INFO, WARNING, ERROR
-from .cache import CacheManager
+from .logging import debug, info, warning, error
 from .connection_manager import ConnectionManager
+
+# Constants
+from .constants import (MIME_TYPES, FILE_ICONS, DEFAULT_SETTINGS, 
+                       BROWSER_COMMANDS)
+
+# Text utilities
+from .text_utils import (calculate_similarity, find_similar_files,
+                        inject_before_tag, format_file_size,
+                        extract_file_extension)
+
+# File utilities - including is_text_file and get_mime_type
+from .file_utils import (get_mime_type, is_file_allowed, is_text_file, 
+                        should_compress_file)
+
+# HTTP utilities
+from .http_utils import HTTPRequest, HTTPResponse, send_error_response, send_options_response
 
 # Components with minimal dependencies
 from .file_watcher import FileWatcher
 from .websocket import WebSocketHandler
 from .directory_listing import DirectoryListing
 from .error_pages import ErrorPages
+
+# File serving components
+from .file_server import FileServer
+from .request_handler import RequestHandler
 
 # Main server class that depends on other components
 from .server import Server

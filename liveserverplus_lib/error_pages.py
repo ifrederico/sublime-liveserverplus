@@ -1,22 +1,133 @@
 # error_pages.py
-"""Error pages handler module"""
+"""Error pages handler module with centralized HTML generation"""
 import os
+from http.client import responses
 from .directory_listing import DirectoryListing
+from .text_utils import find_similar_files
+
 
 class ErrorPages:
-    """Handles custom error pages."""
+    """Handles custom error pages with consistent styling."""
+    
+    # Common CSS for all error pages
+    ERROR_PAGE_CSS = """
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+            margin: 0;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #e74c3c;
+            margin-bottom: 10px;
+            font-size: 48px;
+        }
+        h2 {
+            color: #333;
+            font-weight: normal;
+            margin-bottom: 30px;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+        }
+        code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .suggestion {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .suggestion ul {
+            margin: 10px 0 0 20px;
+            padding: 0;
+        }
+        .suggestion li {
+            margin: 5px 0;
+        }
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .back-link {
+            margin-top: 30px;
+        }
+        small {
+            color: #999;
+        }
+    """
+    
+    @staticmethod
+    def get_error_page(status_code, message=None, details=None, suggestions=None):
+        """
+        Generate a generic error page for any status code.
+        
+        Args:
+            status_code (int): HTTP status code
+            message (str): Error message (defaults to standard HTTP message)
+            details (str): Additional details about the error
+            suggestions (str): HTML content for suggestions
+            
+        Returns:
+            str: Complete HTML error page
+        """
+        if message is None:
+            message = responses.get(status_code, "Unknown Error")
+            
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{status_code} {message}</title>
+    <style>{ErrorPages.ERROR_PAGE_CSS}</style>
+</head>
+<body>
+    <div class="container">
+        <h1>{status_code}</h1>
+        <h2>{message}</h2>
+        {f'<p>{details}</p>' if details else ''}
+        {suggestions or ''}
+        <div class="back-link">
+            <a href="/">&larr; Back to home</a>
+        </div>
+    </div>
+</body>
+</html>"""
     
     @staticmethod
     def get_404_page(path, folders, settings=None):
         """
-        Generate a 404 page or a directory listing if `path` is a folder.
+        Generate a 404 page or a directory listing if path is a folder.
         
-        :param path: The requested URL path (e.g. "/somefile").
-        :param folders: The server’s list of project folders.
-        :param settings: (Optional) A ServerSettings instance, used by DirectoryListing.
-        :return: A UTF-8 HTML string (the entire HTML doc).
+        Args:
+            path: The requested URL path (e.g. "/somefile").
+            folders: The server's list of project folders.
+            settings: (Optional) A ServerSettings instance, used by DirectoryListing.
+            
+        Returns:
+            str: A UTF-8 HTML string
         """
-        # 1) If path is actually a directory, serve the directory listing’s full doc
+        # Check if path is actually a directory
         for folder in folders:
             full_path = os.path.join(folder, path.lstrip("/"))
             if os.path.isdir(full_path):
@@ -26,89 +137,99 @@ class ErrorPages:
                     url_path=path,
                     root_path=folder
                 )
-                # Convert from bytes to string for consistency
                 return listing_bytes.decode("utf-8", errors="replace")
         
-        # 2) If not a directory, build a standalone 404 HTML doc
-        #    (ensuring we do not embed the directory listing’s <html> again).
+        # Generate suggestions
         suggestions_html = ErrorPages._generate_suggestions(path, folders)
-        return f"""\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>404 Not Found</title>
-    <style>
-        /* Simple CSS for the 404 page */
-        h1 {{
-            color: #e74c3c;
-            margin-bottom: 10px;
-        }}
-        .suggestion {{ 
-            background: #fff3cd; 
-            padding: 10px; 
-            border-radius: 4px; 
-            margin: 10px 0; 
-        }}
-    </style>
-</head>
-<body>
-    <h1>404 - Page Not Found</h1>
-    <p>The requested URL <code>{path}</code> was not found on this server.</p>
-    {suggestions_html}
-    <p><a href="/">&larr; Back to home</a></p>
-</body>
-</html>
-"""
+        
+        # Use the generic error page generator
+        return ErrorPages.get_error_page(
+            status_code=404,
+            message="Page Not Found",
+            details=f'The requested URL <code>{path}</code> was not found on this server.',
+            suggestions=suggestions_html
+        )
+    
+    @staticmethod
+    def get_503_page(retry_after=5):
+        """
+        Generate a 503 Service Unavailable page.
+        
+        Args:
+            retry_after (int): Seconds until client should retry
+            
+        Returns:
+            str: Complete HTML error page
+        """
+        return ErrorPages.get_error_page(
+            status_code=503,
+            message="Service Unavailable",
+            details=f"""The server is currently unable to handle your request due to temporary overload.
+                       Please try again in {retry_after} seconds.""",
+            suggestions='<p><small>Maximum concurrent connections reached</small></p>'
+        )
+    
+    @staticmethod
+    def get_500_page(error_id=None):
+        """
+        Generate a 500 Internal Server Error page.
+        
+        Args:
+            error_id (str): Optional error ID for tracking
+            
+        Returns:
+            str: Complete HTML error page
+        """
+        details = "The server encountered an internal error and was unable to complete your request."
+        if error_id:
+            details += f"<br><br><small>Error ID: {error_id}</small>"
+            
+        return ErrorPages.get_error_page(
+            status_code=500,
+            message="Internal Server Error",
+            details=details
+        )
+    
+    @staticmethod
+    def get_400_page(reason=None):
+        """
+        Generate a 400 Bad Request page.
+        
+        Args:
+            reason (str): Optional reason for the bad request
+            
+        Returns:
+            str: Complete HTML error page
+        """
+        details = reason or "The server cannot process your request due to invalid syntax."
+        
+        return ErrorPages.get_error_page(
+            status_code=400,
+            message="Bad Request",
+            details=details
+        )
 
     @staticmethod
     def _generate_suggestions(path, folders):
         """
-        Generate "Did you mean:" file suggestions based on naive string similarity.
-        Return an empty string if no suggestions are found.
+        Generate "Did you mean:" file suggestions using text_utils.
+        
+        Returns:
+            str: HTML snippet with suggestions or empty string
         """
-        suggestions = []
-        search_name = os.path.basename(path)
-
-        for folder in folders:
-            for root, _, files in os.walk(folder):
-                for filename in files:
-                    # If it's > 0.5 similarity, consider it "close"
-                    if ErrorPages._similar(search_name.lower(), filename.lower()) > 0.5:
-                        rel_path = os.path.relpath(os.path.join(root, filename), folder)
-                        suggestions.append(rel_path.replace("\\", "/"))
-
+        # Use text_utils function for finding similar files
+        suggestions = find_similar_files(path, folders, threshold=0.5, max_results=5)
+        
         if not suggestions:
             return ""
         
-        # Show up to 5 suggestions
+        # Generate suggestion HTML
         items_html = "".join(
-            f'<li><a href="/{sugg}">{sugg}</a></li>'
-            for sugg in suggestions[:5]
+            f'<li><a href="/{file_path}">{file_path}</a></li>'
+            for file_path, _ in suggestions
         )
 
-        return f"""\
-<div class="suggestion">
+        return f"""<div class="suggestion">
     <strong>Did you mean:</strong>
-    <ul>
-        {items_html}
-    </ul>
-</div>
-"""
-
-    @staticmethod
-    def _similar(a, b):
-        """Simple string similarity ratio using edit distance."""
-        if len(a) > len(b):
-            a, b = b, a
-        distances = range(len(a) + 1)
-        for i2, c2 in enumerate(b):
-            distances_ = [i2 + 1]
-            for i1, c1 in enumerate(a):
-                if c1 == c2:
-                    distances_.append(distances[i1])
-                else:
-                    distances_.append(1 + min((distances[i1], distances[i1 + 1], distances_[-1])))
-            distances = distances_
-        return 1 - (distances[-1] / max(len(a), len(b)))
+    <ul>{items_html}</ul>
+</div>"""

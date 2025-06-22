@@ -36,7 +36,7 @@ class ServerSettings:
         base_keys = ['host', 'port', 'browser', 'open_browser_on_start', 
                      'allowed_file_types', 'ignore_dirs', 'live_reload',
                      'enable_compression', 'cors_enabled', 'status_bar_enabled',
-                     'max_file_size', 'poll_interval', 'connections', 'cache',
+                     'max_file_size', 'poll_interval', 'cache',
                      'logging']
         
         for key in base_keys:
@@ -162,7 +162,4 @@ class ServerSettings:
     @property
     def max_threads(self):
         """Return the maximum number of threads for the connection pool."""
-        connections = self.get('connections', {})
-        if isinstance(connections, dict):
-            return int(connections.get('max_threads', 10))
-        return 10
+        return int(self.get('max_threads', 10))
