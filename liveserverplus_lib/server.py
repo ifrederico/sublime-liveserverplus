@@ -4,7 +4,6 @@ import os
 import socket
 import threading
 import time
-import sublime
 from concurrent.futures import ThreadPoolExecutor
 
 from .websocket import WebSocketHandler
@@ -12,7 +11,7 @@ from .file_watcher import FileWatcher
 from .settings import ServerSettings
 from .status import ServerStatus
 from .request_handler import RequestHandler
-from .logging import debug, info, warning, error
+from .logging import info, error
 from .utils import get_free_port
 from .connection_manager import ConnectionManager
 
@@ -26,13 +25,14 @@ class Server(threading.Thread):
         self.folders_set = set(folders)
         self.settings = ServerSettings()
         self.status = ServerStatus()
-        self.executor = ThreadPoolExecutor(max_workers=self.settings.max_threads)
+        self.executor = ThreadPoolExecutor(
+            max_workers=self.settings.max_threads,
+                thread_name_prefix='LSP-Worker'
+            )
         self.websocket = WebSocketHandler()
         self.websocket.settings = self.settings
         self.file_watcher = None
         self._stop_flag = False
-        self._connection_threads = set()
-        self._cleanup_lock = threading.Lock()
         self.sock = None
         self.request_handler = None
         
@@ -40,11 +40,6 @@ class Server(threading.Thread):
         
         self.connection_manager = ConnectionManager.get_instance()
         self.connection_manager.configure(self.settings)
-
-    def cleanup_connection_thread(self, thread):
-        """Remove finished connection thread from set"""
-        with self._cleanup_lock:
-            self._connection_threads.discard(thread)
 
     def run(self):
         """Start the server"""
@@ -75,7 +70,12 @@ class Server(threading.Thread):
         
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         
+        # Optimize socket buffer sizes for better throughput
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)  # 64KB send buffer
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)  # 64KB receive buffer
+
         host = self.settings.host
         port = self.settings.port
         
@@ -85,7 +85,7 @@ class Server(threading.Thread):
         except OSError as e:
             if e.errno == errno.EADDRINUSE:
                 # Port in use, try to find a free port
-                warning(f"Port {port} is in use, searching for free port...")
+                info(f"Port {port} is in use, searching for free port...")
                 free_port = get_free_port(49152, 65535)
                 
                 if free_port is None:
@@ -183,7 +183,7 @@ class Server(threading.Thread):
                     watcher_ref.observer.join(timeout=5)
                     
                     if watcher_ref.observer.is_alive():
-                        warning("File watcher did not stop in time, detaching")
+                        info("File watcher did not stop in time, detaching")
                     else:
                         info("File watcher stopped successfully")
             except Exception as e:
@@ -202,7 +202,7 @@ class Server(threading.Thread):
             time.sleep(0.05)
             
         if watcher_thread.is_alive():
-            warning("File watcher shutdown timed out, continuing with server shutdown")
+            info("File watcher shutdown timed out, continuing with server shutdown")
             
         info("File watcher shutdown complete")
 
@@ -212,8 +212,6 @@ class Server(threading.Thread):
         self.websocket.clients.clear()
         
         info("Cleaning up connection threads...")
-        with self._cleanup_lock:
-            self._connection_threads.clear()
 
     def _close_socket(self):
         """Close the main server socket"""

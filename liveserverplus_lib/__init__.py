@@ -70,7 +70,7 @@ from .utils import (compress_data, stream_compress_data,
                    open_in_browser, should_skip_compression)
 from .settings import ServerSettings
 from .status import ServerStatus
-from .logging import debug, info, warning, error
+from .logging import info, error
 from .connection_manager import ConnectionManager
 
 # Constants

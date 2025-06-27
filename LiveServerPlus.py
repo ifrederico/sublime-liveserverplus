@@ -16,7 +16,7 @@ if VENDOR_PATH not in sys.path:
 
 # Now the imports will work
 from .liveserverplus_lib.utils import open_in_browser
-from .liveserverplus_lib.logging import debug, info, warning, error
+from .liveserverplus_lib.logging import info, error
 from .ServerManager import ServerManager
 
 def is_server_running():
@@ -397,6 +397,9 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
     and use Sublime's events to notify the server immediately
     after a file is changed or saved. If 'false', we do nothing.
     """
+    def __init__(self):
+        self._last_change_count = {}
+
     def on_post_save_async(self, view):
         """Immediately notify on file save (no debounce needed)."""
         manager = ServerManager.get_instance()
@@ -420,7 +423,7 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
             return
         
         # If we got here => immediate reload
-        debug(f"File saved, triggering reload: {file_path}")
+        info(f"File saved, triggering reload: {file_path}")
         manager.on_file_change(file_path)
 
     def on_modified_async(self, view):
@@ -428,6 +431,13 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
         If 'delay' > 0, we do a small debounce to avoid reloading
         on every keystroke. If 'delay' == 0, reload immediately.
         """
+        # Skip if file hasn't actually changed
+        change_count = view.change_count()
+        last_count = self._last_change_count.get(view.id(), -1)
+        if change_count == last_count:
+            return
+        self._last_change_count[view.id()] = change_count
+        
         manager = ServerManager.get_instance()
         server = manager.get_server()
         
@@ -452,7 +462,7 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
         
         if delay_ms <= 0:
             # no debounce, immediate
-            debug(f"File modified, auto-saving and triggering immediate reload: {file_path}")
+            info(f"File modified, auto-saving and triggering immediate reload: {file_path}")
             view.run_command('save')  # Auto-save the file
             # The on_post_save_async will handle the reload
             return
@@ -460,7 +470,7 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
         # Debounce with a callback
         def check_debounce():
             if (time.time() - _last_modified[file_path]) >= (delay_ms / 1000.0):
-                debug(f"File modified, auto-saving and triggering debounced reload: {file_path}")
+                info(f"File modified, auto-saving and triggering debounced reload: {file_path}")
                 view.run_command('save')  # Auto-save the file
                 # The on_post_save_async will handle the reload
         

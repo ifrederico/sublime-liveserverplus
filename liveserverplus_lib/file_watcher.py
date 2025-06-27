@@ -6,7 +6,7 @@ from fnmatch import fnmatch
 # Import Watchdog from the vendored location
 from .vendor.watchdog.observers import Observer
 from .vendor.watchdog.events import FileSystemEventHandler
-from .logging import debug, info, warning, error
+from .logging import info, error
 
 class FileWatcher(threading.Thread):
     """Watches for file changes in specified directories using Watchdog"""
@@ -39,7 +39,7 @@ class FileWatcher(threading.Thread):
         
         for folder in self.folders:
             if not os.path.exists(folder):
-                warning(f"Skipping non-existent folder: {folder}")
+                info(f"Skipping non-existent folder: {folder}")
                 continue
                 
             # Skip directories in the ignore list
@@ -83,10 +83,10 @@ class FileWatcher(threading.Thread):
                         self._dir_count += 1
                         watched_dirs.append(web_dir)
                     except Exception as e:
-                        warning(f"Could not watch directory {web_dir}: {e}")
+                        info(f"Could not watch directory {web_dir}: {e}")
                 
                 if len(web_dirs_to_watch) > remaining_slots:
-                    warning(f"Only watching {self._max_directories} directories to avoid resource issues")
+                    info(f"Only watching {self._max_directories} directories to avoid resource issues")
             except Exception as e:
                 error(f"Error setting up watchdog for {folder}: {e}")
         
@@ -111,7 +111,7 @@ class FileWatcher(threading.Thread):
             self.observer.stop()
             self.observer.join(timeout=5)  # Wait up to 5 seconds
             if self.observer.is_alive():
-                warning("File watcher did not stop in time, detaching")
+                info("File watcher did not stop in time, detaching")
             else:
                 info("File watcher stopped successfully")
             self.observer = None  # Clear reference regardless

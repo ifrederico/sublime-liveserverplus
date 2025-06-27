@@ -3,7 +3,7 @@
 import os
 from .constants import TEXT_FILE_EXTENSIONS, MIME_TYPES
 from .text_utils import extract_file_extension
-from .logging import debug, warning, error
+from .logging import info, error
 
 
 def is_text_file(file_path):
@@ -19,26 +19,24 @@ def is_text_file(file_path):
     ext = extract_file_extension(file_path)
     return ext in TEXT_FILE_EXTENSIONS
 
+# Add a cache at module level
+_mime_cache = {}
 
 def get_mime_type(file_path):
-    """
-    Get MIME type for file path.
-    
-    Args:
-        file_path (str): File path
-        
-    Returns:
-        str: MIME type or 'application/octet-stream' if unknown
-    """
+    """Get MIME type for file path with caching."""
     if not file_path:
         return 'application/octet-stream'
-        
-    try:
-        ext = extract_file_extension(file_path)
-        return MIME_TYPES.get(ext, 'application/octet-stream')
-    except Exception as e:
-        error(f"Error determining MIME type for {file_path}: {e}")
-        return 'application/octet-stream'
+    
+    # Check cache first
+    if file_path in _mime_cache:
+        return _mime_cache[file_path]
+    
+    ext = extract_file_extension(file_path)
+    mime_type = MIME_TYPES.get(ext, 'application/octet-stream')
+    
+    # Cache the result
+    _mime_cache[file_path] = mime_type
+    return mime_type
 
 
 def is_file_allowed(file_path, allowed_extensions):
@@ -167,7 +165,7 @@ def is_binary_file(file_path):
                 
             return False
     except Exception as e:
-        warning(f"Error checking if file is binary: {e}")
+        info(f"Error checking if file is binary: {e}")
         return True
 
 
@@ -201,5 +199,5 @@ def get_file_encoding(file_path, default='utf-8'):
         return default
         
     except Exception as e:
-        debug(f"Error detecting encoding for {file_path}: {e}")
+        info("Error detecting encoding for {file_path}: {e}")
         return default

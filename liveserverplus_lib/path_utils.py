@@ -3,7 +3,7 @@
 import os
 import pathlib
 from urllib.parse import unquote
-from .logging import warning, error
+from .logging import info, error
 
 
 def validate_and_secure_path(base_folder, requested_path):
@@ -28,7 +28,7 @@ def validate_and_secure_path(base_folder, requested_path):
         
         # Check for suspicious patterns
         if any(pattern in clean_path for pattern in ['..', '//', '\\\\', '\x00']):
-            warning(f"Suspicious path pattern detected: {requested_path}")
+            info(f"Suspicious path pattern detected: {requested_path}")
             return None
         
         # Step 2: Clean and normalize the path
@@ -40,7 +40,7 @@ def validate_and_secure_path(base_folder, requested_path):
             base_path = pathlib.Path(base_folder).resolve()
             full_path = pathlib.Path(base_folder, clean_path).resolve()
         except Exception as e:
-            warning(f"Path resolution failed: {e}")
+            info(f"Path resolution failed: {e}")
             return None
         
         # Step 4: Verify the path is within base folder
@@ -49,7 +49,7 @@ def validate_and_secure_path(base_folder, requested_path):
             full_path.relative_to(base_path)
             return str(full_path)
         except ValueError:
-            warning(f"Path escape attempt: {requested_path} is outside {base_folder}")
+            info(f"Path escape attempt: {requested_path} is outside {base_folder}")
             return None
             
     except Exception as e:
@@ -73,7 +73,7 @@ def get_relative_path(root_path, file_path):
         
         # Check if path is outside the root
         if rel_path.startswith('..'):
-            warning(f"Path {file_path} is outside of root {root_path}")
+            info(f"Path {file_path} is outside of root {root_path}")
             return None
             
         return rel_path

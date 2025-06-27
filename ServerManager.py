@@ -4,7 +4,7 @@ import threading
 import os
 from .liveserverplus_lib.server import Server
 from .liveserverplus_lib.utils import open_in_browser
-from .liveserverplus_lib.logging import debug, info, warning, error
+from .liveserverplus_lib.logging import info, error
 
 class ServerManager:
     """Manages the lifecycle of LiveServerPlus server instances"""
@@ -23,7 +23,7 @@ class ServerManager:
     def __init__(self):
         self.server = None
         self.restart_pending = False
-        debug("ServerManager initialized")
+        info("ServerManager initialized")
     
     def is_running(self):
         """Check if server is currently running"""
@@ -59,7 +59,7 @@ class ServerManager:
                 self.server = None  # Clear reference immediately
                 info("Stopping server...")
                 # Start shutdown in a daemon thread
-                threading.Thread(target=server_to_stop.stop, daemon=True).start()
+                sublime.set_timeout_async(server_to_stop.stop, 0)
                 return True
             except Exception as e:
                 error(f"Error stopping server: {e}")
@@ -95,7 +95,7 @@ class ServerManager:
         """Open a specific path in browser via the server"""
         server = self.get_server()
         if not server:
-            warning("Cannot open browser - server not running")
+            info("Cannot open browser - server not running")
             return False
         
         host = server.settings.host
@@ -125,7 +125,7 @@ class ServerManager:
         """Proxy for server's file change handler"""
         server = self.get_server()
         if server:
-            debug(f"File changed, notifying server: {file_path}")
+            info(f"File changed, notifying server: {file_path}")
             server.on_file_change(file_path)
             return True
         return False

@@ -227,37 +227,8 @@ DEFAULT_SETTINGS = {
     }
 }
 
-# HTTP status messages
-HTTP_STATUS_MESSAGES = {
-    200: 'OK',
-    201: 'Created',
-    204: 'No Content',
-    301: 'Moved Permanently',
-    302: 'Found',
-    304: 'Not Modified',
-    400: 'Bad Request',
-    401: 'Unauthorized',
-    403: 'Forbidden',
-    404: 'Not Found',
-    405: 'Method Not Allowed',
-    500: 'Internal Server Error',
-    501: 'Not Implemented',
-    503: 'Service Unavailable'
-}
-
 # Socket error codes to ignore
 IGNORED_SOCKET_ERRORS = {9, 57}  # Bad file descriptor, Socket not connected
-
-# WebSocket constants
-WEBSOCKET_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-WEBSOCKET_OPCODES = {
-    'CONTINUATION': 0x0,
-    'TEXT': 0x1,
-    'BINARY': 0x2,
-    'CLOSE': 0x8,
-    'PING': 0x9,
-    'PONG': 0xA
-}
 
 # File watcher settings
 MAX_WATCHED_DIRECTORIES = 50
@@ -284,3 +255,10 @@ BROWSER_COMMANDS = {
         'windows': 'msedge'
     }
 }
+
+# Performance tuning constants
+STREAMING_THRESHOLD = 1024 * 1024  # 1MB - files larger than this are streamed
+DEFAULT_CHUNK_SIZE = 8192  # Default chunk size for file reading
+LARGE_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB - threshold for special handling
+STATUS_UPDATE_THROTTLE = 0.1  # Minimum seconds between status bar updates
+CACHE_DURATION = 2  # Directory listing cache duration in seconds

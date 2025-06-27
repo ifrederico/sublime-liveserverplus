@@ -5,7 +5,7 @@ import socket
 import threading
 import os
 import sublime
-from .logging import debug, info, warning, error
+from .logging import info, error
 
 class WebSocketHandler:
     """Handles WebSocket connections and live reload functionality"""
@@ -19,6 +19,10 @@ class WebSocketHandler:
         
         # Load the injected HTML/JS for live reload
         self._load_injected_code()
+        
+        # Pre-compute common frames
+        self._reload_frame = self._build_websocket_frame('reload')
+        self._refreshcss_frame = self._build_websocket_frame('refreshcss')
         
     def _load_injected_code(self):
         """Load WebSocket injection code from template"""
@@ -104,7 +108,7 @@ class WebSocketHandler:
             try:
                 client.send(frame)
             except (socket.error, OSError) as e:
-                debug(f"Error sending to client: {e}")
+                info(f"Error sending to client: {e}")
                 dead_clients.add(client)
 
         # Reacquire lock to remove dead clients
@@ -119,10 +123,17 @@ class WebSocketHandler:
             self.clients.difference_update(dead_clients)
         
     def _create_websocket_frame(self, message):
-        """Create a simple WebSocket text frame from a string message."""
+        """Return pre-computed frame if available, otherwise build it."""
+        if message == 'reload':
+            return self._reload_frame
+        elif message == 'refreshcss':
+            return self._refreshcss_frame
+        return self._build_websocket_frame(message)
+
+    def _build_websocket_frame(self, message):
+        """Build a WebSocket text frame from a string message."""
         frame = bytearray()
-        # 0x1 indicates a text frame; 0x80 is the FIN bit => combined = 0x81
-        frame.append(0x81)
+        frame.append(0x81)  # FIN + text frame
         
         msg_bytes = message.encode('utf-8', errors='replace')
         length = len(msg_bytes)
@@ -137,4 +148,4 @@ class WebSocketHandler:
             frame.extend(struct.pack('>Q', length))
             
         frame.extend(msg_bytes)
-        return frame
+        return bytes(frame)  # Return immutable bytes

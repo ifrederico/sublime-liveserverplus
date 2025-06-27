@@ -1,6 +1,5 @@
 import sublime
 from .utils import get_free_port
-from .logging import debug, info, warning, error
 
 class ServerSettings:
     """Manages server settings with live reload capability and project support."""
@@ -71,38 +70,16 @@ class ServerSettings:
 
     @property
     def port(self):
-        """
-        Return the server port.
-
-        If the user sets "port": 0, we pick a random free port once and store
-        it in _ephemeral_port_cache so that future calls (like "Open Current File")
-        see the same ephemeral port. If a specific port is given, we validate it
-        and also cache it.
-        """
-        # If we've already picked an ephemeral port, reuse it:
+        """Return the server port with caching."""
         if self._ephemeral_port_cache is not None:
             return self._ephemeral_port_cache
-
-        configured_port = self.get('port', 8080)
-
-        if configured_port == 0:
-            # Use a free port in the dynamic range (49152-65535).
-            free_port = get_free_port(49152, 65535)
-            if free_port is None:
-                warning("No free port found in range 49152-65535; using default port 8080")
-                free_port = 8080
-            self._ephemeral_port_cache = free_port
-            return free_port
-        else:
-            # Validate user-supplied port
-            if not isinstance(configured_port, int) or configured_port < 1 or configured_port > 65535:
-                warning(f"Invalid port {configured_port}, using default port 8080")
-                self._ephemeral_port_cache = 8080
-                return 8080
-
-            # Otherwise just cache the valid user port:
-            self._ephemeral_port_cache = configured_port
-            return configured_port
+            
+        port = self.get('port', 8080)
+        if port == 0:
+            port = get_free_port(49152, 65535) or 8080
+            
+        self._ephemeral_port_cache = port
+        return port 
 
     @property
     def poll_interval(self):

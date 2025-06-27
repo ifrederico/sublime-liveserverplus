@@ -4,7 +4,6 @@ import re
 import os
 from typing import List, Tuple, Optional
 
-
 def calculate_similarity(a: str, b: str) -> float:
     """
     Calculate string similarity ratio using Levenshtein distance.

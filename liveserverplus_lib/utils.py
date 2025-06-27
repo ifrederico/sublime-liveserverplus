@@ -6,7 +6,7 @@ import webbrowser
 import io
 import platform
 from urllib.parse import urlparse, unquote
-from .logging import debug, info, warning, error
+from .logging import info, error
 from .constants import SKIP_COMPRESSION_TYPES, BROWSER_COMMANDS
 
 # Import from new centralized modules
@@ -31,7 +31,7 @@ def detect_encoding(file_path, sample_size=4096):
             has_chardet = True
         except ImportError:
             has_chardet = False
-            debug("chardet not available for encoding detection, using fallbacks")
+            info("chardet not available for encoding detection, using fallbacks")
         
         # Read a sample of the file
         with open(file_path, 'rb') as f:
@@ -44,7 +44,7 @@ def detect_encoding(file_path, sample_size=4096):
             confidence = result.get('confidence', 0)
             
             if encoding and confidence > 0.7:
-                debug(f"Detected encoding for {file_path}: {encoding} (confidence: {confidence:.2f})")
+                info(f"Detected encoding for {file_path}: {encoding} (confidence: {confidence:.2f})")
                 return encoding
         
         # Fallback detection
@@ -64,7 +64,7 @@ def detect_encoding(file_path, sample_size=4096):
             return 'ISO-8859-1'
             
     except Exception as e:
-        warning(f"Error detecting encoding for {file_path}: {e}")
+        info(f"Error detecting encoding for {file_path}: {e}")
         return 'utf-8'
 
 def create_file_reader(file_path, chunk_size=8192):
@@ -91,7 +91,7 @@ def create_file_reader(file_path, chunk_size=8192):
                     break
                     
                 bytes_read += len(chunk)
-                debug(f"Read {bytes_read}/{file_size} bytes from {os.path.basename(file_path)}")
+                info(f"Read {bytes_read}/{file_size} bytes from {os.path.basename(file_path)}")
                 yield chunk
     except Exception as e:
         error(f"Error reading file {file_path}: {e}")
@@ -198,7 +198,7 @@ def open_in_browser(url, browser_name=None):
     try:
         if not browser_name:
             # Use default browser
-            debug(f"Opening URL in default browser: {url}")
+            info(f"Opening URL in default browser: {url}")
             webbrowser.open(url)
             return
 
@@ -209,13 +209,13 @@ def open_in_browser(url, browser_name=None):
         # Get browser command for current platform
         if browser_name in BROWSER_COMMANDS:
             if system in BROWSER_COMMANDS[browser_name]:
-                debug(f"Opening URL in {browser_name} on {system}: {url}")
+                info(f"Opening URL in {browser_name} on {system}: {url}")
                 browser = webbrowser.get(BROWSER_COMMANDS[browser_name][system])
                 browser.open(url)
                 return
 
         # Fallback to default browser
-        warning(f"Browser '{browser_name}' not available on {system}, using default")
+        info(f"Browser '{browser_name}' not available on {system}, using default")
         webbrowser.open(url)
         
     except Exception as e:
@@ -260,12 +260,12 @@ def get_free_port(start_port=8000, max_port=9000):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.bind(('localhost', port))
-                debug(f"Found free port: {port}")
+                info(f"Found free port: {port}")
                 return port
         except OSError:
             pass
     
-    warning(f"No free ports found in range {start_port}-{max_port}")
+    info(f"No free ports found in range {start_port}-{max_port}")
     return None
 
 # HTTP utilities

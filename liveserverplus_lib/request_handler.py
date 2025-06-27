@@ -9,7 +9,7 @@ from .websocket import WebSocketHandler
 from .error_pages import ErrorPages
 from .text_utils import inject_before_tag
 from .file_utils import get_file_info
-from .logging import debug, info, warning, error
+from .logging import info, error
 from .connection_manager import ConnectionManager
 from .constants import IGNORED_SOCKET_ERRORS
 
@@ -39,7 +39,7 @@ class RequestHandler:
             # Receive and parse request
             data = conn.recv(8192)
             if not data:
-                debug(f"Empty data received from {addr}")
+                info(f"Empty data received from {addr}")
                 return
                 
             request = HTTPRequest(data)
@@ -47,7 +47,7 @@ class RequestHandler:
                 send_error_response(conn, 400)
                 return
                 
-            debug(f"Request: {request.method} {request.path} from {addr}")
+            info(f"Request: {request.method} {request.path} from {addr}")
             
             # Route request based on method and type
             if request.is_websocket_upgrade():
@@ -62,14 +62,14 @@ class RequestHandler:
                 send_error_response(conn, 405, "Method Not Allowed")
                 
         except socket.timeout:
-            warning(f"Connection timeout for {addr}")
+            info(f"Connection timeout for {addr}")
         except ConnectionResetError:
-            debug(f"Connection reset by {addr}")
+            info(f"Connection reset by {addr}")
         except BrokenPipeError:
-            debug(f"Broken pipe with {addr}")
+            info(f"Broken pipe with {addr}")
         except socket.error as e:
             if e.errno not in IGNORED_SOCKET_ERRORS:
-                warning(f"Socket error from {addr}: {e}")
+                info(f"Socket error from {addr}: {e}")
         except Exception as e:
             error(f"Unhandled error from {addr}: {e}")
             import traceback
@@ -79,7 +79,7 @@ class RequestHandler:
             
     def _handle_websocket_upgrade(self, conn, request, addr):
         """Handle WebSocket upgrade request"""
-        debug(f"WebSocket upgrade request from {addr}")
+        info(f"WebSocket upgrade request from {addr}")
         
         try:
             # Convert headers dict back to list format for websocket handler
@@ -93,7 +93,7 @@ class RequestHandler:
                 self.websocket.add_client(conn)
                 self._handle_websocket_connection(conn)
             else:
-                warning(f"WebSocket upgrade failed for {addr}")
+                info(f"WebSocket upgrade failed for {addr}")
                 send_error_response(conn, 400, "Bad WebSocket Request")
         except Exception as e:
             error(f"Error during WebSocket upgrade: {e}")
@@ -206,11 +206,7 @@ class RequestHandler:
         """Clean up connection and thread"""
         # Remove from connection manager
         self.connection_manager.remove_connection(conn)
-        
-        # Remove thread from server's tracking
-        if hasattr(self.server, 'cleanup_connection_thread'):
-            self.server.cleanup_connection_thread(thread)
-            
+
         # Close connection
         try:
             try:

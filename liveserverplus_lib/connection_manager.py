@@ -90,9 +90,8 @@ class ConnectionManager:
             conn: Socket connection
         """
         with self.connection_lock:
-            if conn in self.active_connections:
-                self.active_connections.remove(conn)
-                info(f"Connection removed, total active: {len(self.active_connections)}")
+            self.active_connections.discard(conn)
+            info(f"Connection removed, total active: {len(self.active_connections)}")
                 
     def _cleanup(self):
         """Clean up stale connections and request data"""

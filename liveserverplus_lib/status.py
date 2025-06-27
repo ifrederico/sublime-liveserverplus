@@ -1,4 +1,5 @@
 import sublime
+import time
 
 class ServerStatus:
     """Manages server status and status bar updates"""
@@ -16,9 +17,15 @@ class ServerStatus:
         }
         self._current_status = None
         self._port = None
+        self._last_update = 0
         
     def update(self, status, port=None, error=None):
         """Update status across all views"""
+        # Throttle rapid updates
+        current_time = time.time()
+        if current_time - self._last_update < 0.1:
+            return
+        self._last_update = current_time
         self._current_status = status
         self._port = port
 

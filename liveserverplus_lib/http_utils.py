@@ -3,7 +3,7 @@
 import socket
 from http.client import responses
 from urllib.parse import unquote
-from .logging import debug, info, warning, error
+from .logging import info, error
 
 class HTTPResponse:
     """Builder for HTTP responses with chainable methods"""
@@ -53,30 +53,28 @@ class HTTPResponse:
             'X-Frame-Options': 'SAMEORIGIN',
             'Referrer-Policy': 'same-origin'
         })
+        self.headers['Connection'] = 'keep-alive'
+        self.headers['Keep-Alive'] = 'timeout=5, max=100'
         return self
         
     def build(self):
         """Build the complete HTTP response as bytes"""
         status_message = responses.get(self.status_code, "Unknown")
         
-        # Start with status line
-        lines = [f"HTTP/1.1 {self.status_code} {status_message}"]
+        # Pre-allocate list for better performance
+        lines = []
+        lines.append(f"HTTP/1.1 {self.status_code} {status_message}")
         
         # Add content length
         self.headers['Content-Length'] = str(len(self.body))
         
-        # Add all headers
-        for name, value in self.headers.items():
-            lines.append(f"{name}: {value}")
-            
-        # Empty line between headers and body
-        lines.append("")
+        # Build all headers at once
+        lines.extend(f"{name}: {value}" for name, value in self.headers.items())
+        lines.append("")  # Empty line
         
-        # Join headers and encode
-        header_bytes = "\r\n".join(lines).encode('utf-8')
-        
-        # Return headers + body
-        return header_bytes + b"\r\n" + self.body
+        # Join once and encode
+        header_str = "\r\n".join(lines)
+        return header_str.encode('utf-8') + b"\r\n" + self.body
         
     def send(self, conn):
         """Send the response over a connection"""
@@ -131,7 +129,7 @@ class HTTPRequest:
             # Parse request line
             request_line = lines[0].split()
             if len(request_line) < 3:
-                warning(f"Malformed request line: {lines[0]}")
+                info(f"Malformed request line: {lines[0]}")
                 return
                 
             self.method = request_line[0]

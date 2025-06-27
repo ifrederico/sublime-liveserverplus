@@ -8,6 +8,7 @@ from .file_utils import (get_mime_type, is_file_allowed, is_text_file,
                         extract_file_extension, should_compress_file)
 from .http_utils import (HTTPResponse, create_file_response, create_error_response)
 from .logging import info, error
+from .constants import STREAMING_THRESHOLD, LARGE_FILE_THRESHOLD
 
 
 class FileServer:
@@ -22,8 +23,12 @@ class FileServer:
         Main entry point for serving files.
         Returns True if file was served, False otherwise.
         """
-        if path == '/':
-            path = '/index.html'
+        # Quick existence check for common case
+        if path == '/' or path == '/index.html':
+            for folder in folders:
+                index_path = os.path.join(folder, 'index.html')
+                if os.path.isfile(index_path):
+                    return self._serve_file(conn, index_path, 'index.html', folder)
             
         rel_path = path.lstrip('/')
         
@@ -72,7 +77,7 @@ class FileServer:
         # Get file size for streaming decision
         try:
             file_size = os.path.getsize(full_path)
-            should_stream = file_size > (1024 * 1024)  # 1MB threshold
+            should_stream = file_size > STREAMING_THRESHOLD
         except OSError:
             return False
             
@@ -87,12 +92,6 @@ class FileServer:
         else:
             # Force download for non-allowed files
             return self._send_as_download(conn, full_path, mime_type, file_size)
-                  
-    def _get_file_content(self, file_path):
-        """Get file content from disk"""
-        # Read from disk
-        content = self._read_file_from_disk(file_path)
-        return content
         
     def _read_file_from_disk(self, file_path):
         """Read file from disk with encoding detection"""
@@ -121,7 +120,16 @@ class FileServer:
             
     def _send_file_contents(self, conn, file_path, mime_type):
         """Send file contents with optional WebSocket injection"""
-        content = self._get_file_content(file_path)
+        # Check file size first to avoid loading large files
+        try:
+            file_size = os.path.getsize(file_path)
+            # Large files should be streamed, not loaded into memory
+            if file_size > LARGE_FILE_THRESHOLD and not file_path.lower().endswith(('.html', '.htm')):
+                return self._stream_file(conn, file_path, mime_type)
+        except OSError:
+            pass
+        
+        content = self._read_file_from_disk(file_path)
         if content is None:
             return False
             

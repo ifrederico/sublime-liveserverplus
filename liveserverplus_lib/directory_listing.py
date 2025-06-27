@@ -3,8 +3,9 @@ import os
 from datetime import datetime
 from typing import Dict, List, Any
 import sublime
+import time
 from string import Template
-from .logging import debug, info, warning, error
+from .logging import info, error
 from .constants import FILE_ICONS, DEFAULT_FILE_ICON, DIRECTORY_ICON
 from .text_utils import format_file_size, extract_file_extension
 from .file_utils import is_file_allowed
@@ -15,6 +16,10 @@ class DirectoryListing:
 
     def __init__(self, settings=None):
         self.settings = settings
+        self._cache = {}
+        self._cache_time = {}
+        self.cache_duration = 2  # seconds
+
         try:
             # Must match your actual package and folder names:
             resource_path = "Packages/LiveServerPlus/liveserverplus_lib/templates/directory_listing.html"
@@ -77,6 +82,12 @@ class DirectoryListing:
 
     def generate_listing(self, dir_path: str, url_path: str, root_path: str) -> bytes:
         """Generate complete directory listing page"""
+        # Check cache first
+        cache_key = f"{dir_path}:{url_path}"
+        if cache_key in self._cache:
+            if time.time() - self._cache_time.get(cache_key, 0) < self.cache_duration:
+                return self._cache[cache_key]
+            
         try:
             items = self.generate_items_list(dir_path)
             
@@ -110,7 +121,11 @@ class DirectoryListing:
                 items=items_html
             )
             
-            return html.encode('utf-8')
+            # Cache the result
+            result = html.encode('utf-8')
+            self._cache[cache_key] = result
+            self._cache_time[cache_key] = time.time()
+            return result
             
         except Exception as e:
             return f"<p>Error reading directory: {e}</p>".encode('utf-8')
