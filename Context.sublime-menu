@@ -29,7 +29,6 @@
             },
             { "caption": "-" },
             {
-                "caption": "Live Reload",
                 "command": "live_server_toggle_live_reload",
                 "mnemonic": "L"
             },
