@@ -2,7 +2,6 @@
 [
     {
         "caption": "Tools",
-        "mnemonic": "T",
         "id": "tools",
         "children": [
             {
@@ -12,35 +11,29 @@
                     {
                         "caption": "Start Server",
                         "command": "live_server_start",
-                        "mnemonic": "S"
                     },
                     {
                         "caption": "Stop Server",
                         "command": "live_server_stop",
-                        "mnemonic": "X"
                     },
                     { "caption": "-" },
                     // File Actions
                     {
                         "caption": "Open Current File in Browser",
                         "command": "open_current_file_live_server",
-                        "mnemonic": "O"
                     },
                     {
                         "caption": "Show Mobile QR Code",
                         "command": "live_server_show_qr",
-                        "mnemonic": "Q"
                     },
                     { "caption": "-" },
                     // Configuration
                     {
                         "command": "live_server_toggle_live_reload",
-                        "mnemonic": "L"
                     },
                     {
                         "caption": "Change Port...",
                         "command": "live_server_change_port",
-                        "mnemonic": "P"
                     },
                     { "caption": "-" },
                     {
@@ -50,7 +43,6 @@
                             "base_file": "${packages}/LiveServerPlus/LiveServerPlus.sublime-settings",
                             "default": "// LiveServerPlus Settings - User\n{\n\t$0\n}\n"
                         },
-                        "mnemonic": "C"
                     }
                 ]
             }
