@@ -90,10 +90,14 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
         
         view = self.window.active_view()
         if view:
+            # Simple center: middle of visible region
+            visible = view.visible_region()
+            center = (visible.begin() + visible.end()) // 2
+            
             view.show_popup(
                 html,
-                sublime.HIDE_ON_MOUSE_MOVE_AWAY,
-                location=-1,
+                flags=0,
+                location=center,
                 max_width=300,
                 max_height=400
             )
