@@ -1,3 +1,4 @@
+# liveserverplus_lib/status.py
 import sublime
 import time
 
@@ -6,14 +7,11 @@ class ServerStatus:
     
     def __init__(self):
         self.messages = {
-            'starting': '((•)) Starting server on port {}...',
+            'starting': '((•)) Starting server...',
             'running': '[Ø] Server running on port {}',
             'stopping': '[/] Stopping server...',
             'stopped': '[X] Server stopped',
-            'error_bind': '[!] Port {} bind error: {}',
-            'error_generic': '[!] Server error: {}',
-            'reloading': '<> Reloading: {}', 
-            'no_files': '[∅] No files to serve' 
+            'error': '[!] Server error: {}'
         }
         self._current_status = None
         self._port = None
@@ -31,12 +29,15 @@ class ServerStatus:
 
         if status not in self.messages:
             return
-
+            
         msg = self.messages[status]
-        if port:
+        
+        # Format message based on status type
+        if status == 'running' and port:
             msg = msg.format(port)
-        if error:
-            msg = msg.format(port, error)
+        elif status == 'error' and error:
+            msg = msg.format(error)
+        # 'starting', 'stopping', and 'stopped' don't need formatting
 
         import sublime
         # Load the settings and check the status_bar_enabled flag.

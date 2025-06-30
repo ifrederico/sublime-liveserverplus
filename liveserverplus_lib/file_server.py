@@ -71,8 +71,8 @@ class FileServer:
         if not validate_and_secure_path(base_folder, rel_path):
             return self._send_forbidden(conn)
             
-        # Check if file is allowed using centralized function
-        is_allowed = is_file_allowed(full_path, self.settings.allowed_file_types)
+        # Check if file is allowed using centralized function with optimized set
+        is_allowed = is_file_allowed(full_path, self.settings.allowed_file_types_set) 
         
         # Get file size for streaming decision
         try:

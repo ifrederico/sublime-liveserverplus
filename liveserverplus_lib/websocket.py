@@ -1,3 +1,4 @@
+# liveserverplus_lib/websocket.py
 import base64
 import hashlib
 import struct

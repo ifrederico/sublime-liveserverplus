@@ -1,4 +1,4 @@
-# server_manager.py
+# ServerManager.py
 import sublime
 import threading
 import os
@@ -98,7 +98,7 @@ class ServerManager:
             info("Cannot open browser - server not running")
             return False
         
-        host = server.settings.host
+        host = 'localhost'  # Instead of server.settings.host
         port = server.settings.port
         browser = browser or server.settings.browser
         

@@ -1,23 +1,30 @@
 // Default.sublime-commands
 [
+    // Primary Server Commands
     {
-        "caption": "Live Server Plus: Start",
+        "caption": "Live Server Plus: Start Server",
         "command": "live_server_start"
     },
     {
-        "caption": "Live Server Plus: Stop",
+        "caption": "Live Server Plus: Stop Server",
         "command": "live_server_stop"
     },
+    // File/Browser Commands
     {
-        "caption": "Live Server Plus: Open Current File",
+        "caption": "Live Server Plus: Open Current File in Browser",
         "command": "open_current_file_live_server"
     },
     {
-        "caption": "Live Server Plus: Start Server Here",
-        "command": "live_server_start_here"
+        "caption": "Live Server Plus: Show Mobile QR Code",
+        "command": "live_server_show_qr"
+    },
+    // Configuration Commands
+    {
+        "caption": "Live Server Plus: Toggle Live Reload",
+        "command": "live_server_toggle_live_reload"
     },
     {
-        "caption": "Live Server Plus: Change Port",
+        "caption": "Live Server Plus: Change Port...",
         "command": "live_server_change_port"
     },
     {

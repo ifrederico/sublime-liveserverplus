@@ -19,6 +19,8 @@ from .liveserverplus_lib.utils import open_in_browser
 from .liveserverplus_lib.logging import info, error
 from .ServerManager import ServerManager
 
+from .liveserverplus_lib.qr_utils import (get_server_urls, generate_qr_code_base64, HAS_QR_SUPPORT, get_local_ip)
+
 def is_server_running():
     """Check if server is currently running - compatibility function"""
     return ServerManager.get_instance().is_running()
@@ -34,6 +36,72 @@ def live_server_stop():
 def is_file_allowed(file_path):
     """Check if file type is allowed by the server settings - compatibility function"""
     return ServerManager.get_instance().is_file_allowed(file_path)
+
+# Clean LiveServerShowQrCommand:
+class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
+    """Show QR code for mobile device access"""
+    
+    def run(self):
+        manager = ServerManager.get_instance()
+        
+        if not manager.is_running():
+            sublime.status_message("Live Server is not running")
+            return
+        
+        if not HAS_QR_SUPPORT:
+            sublime.error_message(
+                "QR code generation not available.\n\n"
+                "The pyqrcode and pypng libraries are missing from the vendor folder."
+            )
+            return
+            
+        server = manager.get_server()
+        if not server:
+            return
+            
+        # Get server info
+        host = server.settings.host
+        port = server.settings.port
+        
+        # Get URLs
+        urls = get_server_urls(host, port)
+        primary_url = urls['primary']
+        
+        # Generate PNG QR code
+        qr_base64 = generate_qr_code_base64(primary_url)
+        
+        if not qr_base64:
+            sublime.error_message("Failed to generate QR code")
+            return
+        
+        # Show popup
+        self._show_qr_popup(primary_url, qr_base64, port)
+    
+    def _show_qr_popup(self, url, qr_base64, port):
+        """Display the QR code popup"""
+        local_ip = get_local_ip()
+        
+        html = f"""<div style="padding: 20px; text-align: center;">
+            <h3 style="margin: 0 0 15px 0;">📱 Mobile Preview</h3>
+            <p style="font-family: monospace; word-break: break-all; margin: 15px 0;">{url}</p>
+            <img src="data:image/png;base64,{qr_base64}" width="200" height="200">
+            <p style="margin-top: 20px; font-size: 0.9em; color: #666;">ESC to close</p>
+        </div>"""
+        
+        view = self.window.active_view()
+        if view:
+            view.show_popup(
+                html,
+                sublime.HIDE_ON_MOUSE_MOVE_AWAY,
+                location=-1,
+                max_width=300,
+                max_height=400
+            )
+            info(f"QR popup shown for {url}")
+    
+    def is_enabled(self):
+        """Only enable when server is running"""
+        return ServerManager.get_instance().is_running()
 
 class LiveServerStartCommand(sublime_plugin.WindowCommand):
     """Enhanced start command with folder selection"""
@@ -201,41 +269,6 @@ class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
             bool(self.window.active_view() and self.window.active_view().file_name())
         )
 
-class LiveServerStartHereCommand(sublime_plugin.TextCommand):
-    """Start server in the current file's directory"""
-    
-    def run(self, edit):
-        manager = ServerManager.get_instance()
-        
-        if manager.is_running():
-            # Server already running, just open the file
-            self.view.window().run_command("open_current_file_live_server")
-            return
-        
-        # Start server in current file's directory
-        file_path = self.view.file_name()
-        if file_path:
-            file_dir = os.path.dirname(file_path)
-            self.view.window().run_command("live_server_start", {"folders": [file_dir]})
-    
-    def is_enabled(self):
-        """
-        Enabled only when this view is a saved file.
-        """
-        return (
-            bool(self.view.file_name()) and      # saved to disk
-            not ServerManager.get_instance().is_running()
-        )
-    
-    def is_visible(self):
-        """Show only for web files"""
-        if not self.view.file_name():
-            return False
-        
-        ext = os.path.splitext(self.view.file_name())[1].lower()
-        web_extensions = ['.html', '.htm', '.css', '.js', '.php', '.xml']
-        return ext in web_extensions
-
 class LiveServerChangePortCommand(sublime_plugin.WindowCommand):
     """Change server port via input panel"""
     
@@ -371,10 +404,10 @@ def plugin_unloaded():
         info("Plugin unloading")
         manager = ServerManager.get_instance()
         if manager.is_running():
-            # Update status to "Server closing" before stopping
+            # Update status to "stopping" before stopping
             server = manager.get_server()
             if server:
-                server.status.update('Server closing')
+                server.status.update('stopping')  # Changed from 'Server closing'
             manager.stop()
         
         # Clear singleton instance to prevent memory leaks

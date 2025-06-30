@@ -1,37 +1,52 @@
+// Context.sublime-menu
 [
     {
         "caption": "-"
     },
     {
-        "caption": "Live Server",
+        "caption": "Live Server Plus",
         "children": [
+            {
+                "caption": "Start Server",
+                "command": "live_server_start",
+                "mnemonic": "S"
+            },
             {
                 "caption": "Open in Browser",
                 "command": "open_current_file_live_server",
                 "mnemonic": "O"
             },
+            { "caption": "-" },
             {
-                "caption": "Start Server Here",
-                "command": "live_server_start_here",
-                "mnemonic": "S"
+                "caption": "Stop Server",
+                "command": "live_server_stop",
+                "mnemonic": "X"
             },
             {
-                "caption": "-"
+                "caption": "Show Mobile QR Code",
+                "command": "live_server_show_qr",
+                "mnemonic": "Q"
             },
+            { "caption": "-" },
             {
+                "caption": "Live Reload",
                 "command": "live_server_toggle_live_reload",
                 "mnemonic": "L"
             },
-            {
-                "caption": "-"
-            },
-            {
-                "caption": "Stop Server",
-                "command": "live_server_stop"
-            },
+            { "caption": "-" },
             {
                 "caption": "Change Port...",
-                "command": "live_server_change_port"
+                "command": "live_server_change_port",
+                "mnemonic": "P"
+            },
+            {
+                "caption": "Settings...",
+                "command": "edit_settings",
+                "args": {
+                    "base_file": "${packages}/LiveServerPlus/LiveServerPlus.sublime-settings",
+                    "default": "// LiveServerPlus Settings - User\n{\n\t$0\n}\n"
+                },
+                "mnemonic": "C"
             }
         ]
     }

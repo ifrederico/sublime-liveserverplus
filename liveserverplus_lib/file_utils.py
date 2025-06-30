@@ -39,19 +39,19 @@ def get_mime_type(file_path):
     return mime_type
 
 
-def is_file_allowed(file_path, allowed_extensions):
+def is_file_allowed(file_path, allowed_extensions_set):
     """
-    Check if file extension is in allowed list.
+    Check if file extension is in allowed set.
     
     Args:
         file_path (str): Path to the file
-        allowed_extensions (list): List of allowed extensions (with dots)
+        allowed_extensions_set: Set of allowed extensions for O(1) lookup
         
     Returns:
         bool: True if file is allowed
     """
     ext = extract_file_extension(file_path)
-    return any(ext == allowed_ext.lower() for allowed_ext in allowed_extensions)
+    return ext in allowed_extensions_set
 
 
 def should_compress_file(file_path, mime_type=None):

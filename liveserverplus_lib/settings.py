@@ -1,3 +1,4 @@
+# liveserverplus_lib/settings.py
 import sublime
 from .utils import get_free_port
 
@@ -12,6 +13,14 @@ class ServerSettings:
         
     def load_settings(self):
         """Load settings with project override support"""
+        # Remove previous listener if it exists
+        if hasattr(self, '_settings') and self._settings:
+            self._settings.clear_on_change('live_server_settings')
+        
+        # Clear cached values
+        if hasattr(self, '_allowed_types_cache'):
+            del self._allowed_types_cache
+        
         # Load base settings
         self._settings = sublime.load_settings("LiveServerPlus.sublime-settings")
         self._settings.add_on_change('live_server_settings', self.on_settings_change)
@@ -23,10 +32,14 @@ class ServerSettings:
             if project_data and 'liveserver' in project_data:
                 # Create a merged settings object
                 self._merged_settings = self._merge_settings(project_data['liveserver'])
+            else:
+                self._merged_settings = None
+        else:
+            self._merged_settings = None
         
         # Clear any previously cached ephemeral port whenever settings reload:
         self._ephemeral_port_cache = None
-    
+
     def _merge_settings(self, project_settings):
         """Merge project settings with base settings"""
         merged = {}
@@ -140,3 +153,10 @@ class ServerSettings:
     def max_threads(self):
         """Return the maximum number of threads for the connection pool."""
         return int(self.get('max_threads', 10))
+    
+    @property
+    def allowed_file_types_set(self):
+        """Return a set of lowercase allowed extensions for O(1) lookup"""
+        if not hasattr(self, '_allowed_types_cache'):
+            self._allowed_types_cache = {ext.lower() for ext in self.allowed_file_types}
+        return self._allowed_types_cache

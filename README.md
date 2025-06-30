@@ -1,6 +1,6 @@
 # Live Server Plus for Sublime Text
 
-A lightweight development server with WebSocket-based live reload and directory listings—all from within Sublime Text.
+A lightweight development server with WebSocket‑based live reload.
 
 ![Live Server Plus Demo](./images/liveserverplus1.gif)
 
@@ -8,64 +8,69 @@ A lightweight development server with WebSocket-based live reload and directory 
 
 ## Installation
 
-### Via Package Control (Recommended)
+### Package Control (recommended)
 
-1. Open the Command Palette: **`Cmd/Ctrl + Shift + P`**  
-2. Select **“Package Control: Install Package”**  
+1. Open the Command Palette: **`Cmd/Ctrl + Shift + P`**  
+2. Select **Package Control: Install Package**  
 3. Search for **“LiveServerPlus”** and install.
 
-### Manual Installation
+### Manual
 
-1. Download or clone this repository.
-2. In Sublime Text, go to **`Preferences > Browse Packages…`**.
-3. Move/copy the downloaded folder into the `Packages` directory.
-4. Ensure the folder name is **`LiveServerPlus`**.
+1. Download or clone this repository.  
+2. In Sublime Text, choose **Preferences ▸ Browse Packages…**  
+3. Copy the folder into the `Packages` directory and name it **`LiveServerPlus`**.
 
 ---
 
 ## Usage
 
-First, open a folder or workspace (**File » Open Folder**) in Sublime Text. Then:
+Open a file, folder or workspace (**File ▸ Open Folder**) first.
 
-### 1. Main Menu
+### Main menu
 
-- **Tools » Live Server Plus**:
-  - **Start Server**: Starts the live server.
-  - **Stop Server**: Stops the server.
-  - **Open Current File**: Opens active file in browser.
+*Tools ▸ Live Server Plus*:
 
-### 2. Command Palette
+| Action | Description |
+| ------ | ----------- |
+| **Start Server** | Starts the server (multi‑folder picker). |
+| **Stop Server** | Stops the server. |
+| **Open Current File** | Opens the active file through the server. |
+| **Show Mobile QR Code** | Displays a QR linking devices on the LAN to the dev URL. |
+| **Live Reload** | Toggles live‑reload on or off. |
+| **Change Port…** | Enter any port or **0** for “find a free one”. |
+| **Settings…** | Opens the user settings file. |
 
-Press `Cmd/Ctrl + Shift + P`, then select:
-- **Live Server Plus: Start**
-- **Live Server Plus: Stop**
-- **Live Server Plus: Open Current File**
+### Command Palette
+
+`Cmd/Ctrl + Shift + P` → type:
+
+- **Live Server Plus: Start Server**  
+- **Live Server Plus: Stop Server**  
+- **Live Server Plus: Open Current File in Browser**  
+- **Live Server Plus: Show Mobile QR Code**  
+- **Live Server Plus: Toggle Live Reload**  
+- **Live Server Plus: Change Port…**  
 - **Live Server Plus: Settings**
 
-### Example Workflow
+### Example workflow
 
-1. Launch Sublime and open your web project folder.
-2. Run **Live Server Plus: Start** from the Command Palette.
-3. Edit and save files; browser refreshes automatically.
+1. Open your project folder.  
+2. Run **Live Server Plus: Start Server**.  
+3. Edit and save—your browser refreshes automatically.
 
 ---
 
 ## Features
 
-- **Instant Refresh**: Automatically refreshes the browser on file changes.
-- **No External Dependencies**: Runs directly in Sublime’s bundled Python environment.
-- **Friendly Directory View & Smart 404s**: Easily navigate your project; get helpful suggestions on missing files.
-- **Flexible File Watching**:
-  - **Sublime Events**: Fast, built-in method for most users.
-  - **Built-in Watcher**: Poll-based watcher as a fallback (handles external changes).
-- **Customizable Settings**: Adjust port, host, compression, browser, and more.
-- **Status Bar Integration**: Quickly see server status.
+- **Instant reload** on file changes; optional CSS‑only injection.  
+- **Mobile preview**: scan a QR code to open the site on any device.  
+- **Port selection**: choose a port at startup or set `"port": 0` for a free one.  
+- **Two watcher modes**: Sublime on‑save events (fast) or Watchdog polling (external changes). 
+- **Runs in Sublime’s bundled Python**—no external runtime required.
 
 ---
 
-## Optional Key Bindings
-
-Add keyboard shortcuts via **`Preferences > Key Bindings`**:
+## Optional key bindings
 
 ```json
 [
@@ -77,50 +82,78 @@ Add keyboard shortcuts via **`Preferences > Key Bindings`**:
 
 ---
 
-## Settings (Customizing Live Server)
+## Settings quick reference
 
-Open via **`Preferences > Package Settings > Live Server Plus > Settings`**.
+```js
+// LiveServerPlus.sublime-settings (user)
+{
+    "host": "localhost",
+    "port": 0,                       // 0 = choose a free port
+    "open_browser_on_start": true,
+    "browser": "",                   // "chrome", "firefox", "edge", ...
+    "status_bar_enabled": true,
 
-**Note:** Restart the server after changing settings.
+    "live_reload": {
+        "enabled": false,
+        "css_injection": true,
+        "delay": 500,                // ms debounce (0 = instant)
+        "ignore_exts": [".log", ".map"]
+    },
+
+    "enable_compression": true,
+    "cors_enabled": false,
+    "max_file_size": 100,            // MB
+
+    "connections": {
+        "max_concurrent": 100,
+        "timeout": 30,
+        "max_threads": 10
+    },
+
+    "allowed_file_types": [".html", ".css", ".js", "..."],
+    "ignore_dirs": ["node_modules", ".git", "__pycache__"]
+}
+```
+
+Restart the server after changing settings.
 
 ---
 
 ## Requirements
 
-- **Sublime Text 4**
+- **Sublime Text 4** (Build ≥ 4152)  
 - Browser with WebSocket support (Chrome, Firefox, Edge, Safari)
 
 ---
 
-## Known Limitations
+## Known limitations
 
-- No built-in HTTPS support. Use reverse proxy if HTTPS is required.
-- File watcher limits directories (50 max).
+- No built‑in HTTPS.
+- Watchdog mode watches up to 50 directories; switch to Sublime‑event mode for very large projects.
 
 ---
 
 ## Contributing
 
-Contributions welcome! Please open issues or PRs.
+Contributions welcome! Issues and pull requests are welcome.
 
 ---
 
-## Vendored Dependencies
+## Vendored dependencies
 
-To ensure compatibility and avoid external dependency issues, this plugin includes the following vendored libraries:
+- **Watchdog 6.0.0** – filesystem events  
+- **PyQRCode** and **pypng** – QR generation (optional)  
 
-- Watchdog (v6.0.0) for file system event monitoring.
-
-These libraries are included in the liveserverplus_lib/vendor directory and are loaded dynamically by the plugin.
+All vendored under `liveserverplus_lib/vendor/`.
 
 ---
 
 ## Support
 
-Report bugs/issues on [GitHub Issues](https://github.com/ifrederico/sublime-liveserverplus/issues).
+Report bugs/issues on GitHub: <https://github.com/ifrederico/sublime-liveserverplus/issues>
 
 ---
 
 ## License
 
-MIT License ([LICENSE](./LICENSE)).
+[MIT](./LICENSE)

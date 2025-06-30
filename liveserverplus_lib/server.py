@@ -1,5 +1,5 @@
-# server.py
-"""Server implementation module - refactored version"""
+# liveserverplus_lib/server.py
+"""Server implementation module """
 import os
 import socket
 import threading
@@ -45,6 +45,7 @@ class Server(threading.Thread):
         """Start the server"""
         try:
             info("Server starting...")
+            self.status.update('starting')
             self._setup_socket()
             self._setup_file_watcher()
             
@@ -62,7 +63,7 @@ class Server(threading.Thread):
             error(f"Critical server error: {e}")
             import traceback
             error(traceback.format_exc())
-            self.status.update('error', self.settings.port, str(e))
+            self.status.update('error', error=str(e))
 
     def _setup_socket(self):
         """Set up the server socket with error handling"""
@@ -79,9 +80,12 @@ class Server(threading.Thread):
         host = self.settings.host
         port = self.settings.port
         
+        # Always bind to 0.0.0.0 for network access when host is localhost/127.0.0.1
+        bind_host = '0.0.0.0' if host in ['localhost', '127.0.0.1'] else host
+        
         try:
-            self.sock.bind((host, port))
-            info(f"Successfully bound to {host}:{port}")
+            self.sock.bind((bind_host, port))  # IMPORTANT: Use bind_host here!
+            info(f"Successfully bound to {host}:{port}")  # Show user-friendly host
         except OSError as e:
             if e.errno == errno.EADDRINUSE:
                 # Port in use, try to find a free port
@@ -89,15 +93,23 @@ class Server(threading.Thread):
                 free_port = get_free_port(49152, 65535)
                 
                 if free_port is None:
-                    self.status.update('error', port, f"Port {port} is in use and no free port available.")
-                    error(f"Port {port} is in use and no free port available.")
+                    error_msg = f"Port {port} is in use and no free port available."
+                    self.status.update('error', error=error_msg)  # Changed: removed port parameter, added error=
+                    error(error_msg)
                     raise
                     
                 info(f"Port {port} is in use. Using free port {free_port}.")
-                self.settings._settings.set('port', free_port)
+                # Only update the ephemeral cache, not the actual settings
                 self.settings._ephemeral_port_cache = free_port
-                self.sock.bind((host, free_port))
-                info(f"Successfully bound to {host}:{free_port}")
+                
+                try:
+                    self.sock.bind((bind_host, free_port))  # IMPORTANT: Use bind_host here too!
+                    info(f"Successfully bound to {host}:{free_port}")
+                except OSError as bind_error:
+                    # Reset the cache if binding fails
+                    self.settings._ephemeral_port_cache = None
+                    error(f"Failed to bind to free port {free_port}: {bind_error}")
+                    raise
             else:
                 error(f"Unexpected error binding to port: {e}")
                 raise
@@ -149,6 +161,7 @@ class Server(threading.Thread):
             return
             
         info("Initiating server shutdown...")
+        self.status.update('stopping')
         self._stop_flag = True
 
         self._shutdown_executor()

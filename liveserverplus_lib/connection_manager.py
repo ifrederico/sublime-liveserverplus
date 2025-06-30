@@ -23,8 +23,9 @@ class ConnectionManager:
         """Initialize the connection manager"""
         self.active_connections = set()
         self.connection_lock = threading.Lock()
-        self.max_threads = 10  # Simplified to just max_threads
+        self.max_threads = 10
         self.requests_per_client = collections.defaultdict(int)
+        self.last_request_time = {}  # Track last request time per client
         self.last_cleanup = time.time()
         self.cleanup_interval = 60  # Cleanup old data every minute
         
@@ -36,7 +37,6 @@ class ConnectionManager:
             settings: Server settings object
         """
         if hasattr(settings, '_settings'):
-            # Simplified: just get max_threads
             self.max_threads = settings._settings.get('max_threads', 10)
             
     def add_connection(self, conn, addr):
@@ -57,7 +57,7 @@ class ConnectionManager:
                 self._cleanup()
                 self.last_cleanup = current_time
                 
-            # Check if we're at the connection limit (using max_threads as limit)
+            # Check if we're at the connection limit
             if len(self.active_connections) >= self.max_threads:
                 error(f"Connection limit reached ({self.max_threads}), rejecting connection from {addr}")
                 
@@ -78,6 +78,7 @@ class ConnectionManager:
             # Record the connection
             self.active_connections.add(conn)
             self.requests_per_client[addr[0]] += 1
+            self.last_request_time[addr[0]] = current_time  # Track time of this request
             
             info(f"New connection from {addr}, total active: {len(self.active_connections)}")
             return True
@@ -99,14 +100,16 @@ class ConnectionManager:
         current_time = time.time()
         stale_entries = []
         
-        for client_ip in self.requests_per_client:
-            if current_time - self.last_cleanup > 3600:  # 1 hour
+        # Check each client's last request time
+        for client_ip, last_time in list(self.last_request_time.items()):
+            if current_time - last_time > 3600:  # 1 hour since last request
                 stale_entries.append(client_ip)
                 
         for client_ip in stale_entries:
             del self.requests_per_client[client_ip]
+            del self.last_request_time[client_ip]
             
-        info(f"Cleaned up connection data, active connections: {len(self.active_connections)}")
+        info(f"Cleaned up connection data for {len(stale_entries)} stale clients, active connections: {len(self.active_connections)}")
     
     def get_stats(self):
         """

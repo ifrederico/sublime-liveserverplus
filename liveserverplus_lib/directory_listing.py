@@ -1,3 +1,4 @@
+# liveserverplus_lib/directory_listing.py
 """Directory listing module"""
 import os
 from datetime import datetime
@@ -132,8 +133,8 @@ class DirectoryListing:
             
     def _generate_item_html(self, item: Dict[str, Any]) -> str:
         """Generate HTML for a single item row"""
-        # Use centralized file checking
-        allowed_extensions = self.settings.allowed_file_types if self.settings else []
+        # Use centralized file checking with optimized set
+        allowed_extensions = self.settings.allowed_file_types_set if self.settings else set()
         is_allowed = is_file_allowed(item['name'], allowed_extensions)
         
         # Only add download attribute if it's a file (not a directory) and not allowed
