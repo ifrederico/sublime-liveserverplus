@@ -37,7 +37,6 @@ def is_file_allowed(file_path):
     """Check if file type is allowed by the server settings - compatibility function"""
     return ServerManager.get_instance().is_file_allowed(file_path)
 
-# Clean LiveServerShowQrCommand:
 class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
     """Show QR code for mobile device access"""
     
@@ -67,6 +66,24 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
         urls = get_server_urls(host, port)
         primary_url = urls['primary']
         
+        # FIX: Get current file path and append to URL
+        view = self.window.active_view()
+        if view and view.file_name():
+            file_path = view.file_name()
+            
+            # Find relative path from served folders
+            rel_path = None
+            for folder in server.folders:
+                if file_path.startswith(folder):
+                    rel_path = os.path.relpath(file_path, folder)
+                    break
+            
+            # If we found a relative path, append it to the URL
+            if rel_path:
+                # Convert to URL format (forward slashes)
+                url_path = rel_path.replace(os.sep, '/')
+                primary_url = f"{primary_url}/{url_path}"
+        
         # Generate PNG QR code
         qr_base64 = generate_qr_code_base64(primary_url)
         
@@ -81,9 +98,13 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
         """Display the QR code popup"""
         local_ip = get_local_ip()
         
+        # Extract just the filename for display
+        display_file = url.split('/')[-1] if '/' in url else "root"
+        
         html = f"""<div style="padding: 20px; text-align: center;">
             <h3 style="margin: 0 0 15px 0;">📱 Mobile Preview</h3>
-            <p style="font-family: monospace; word-break: break-all; margin: 15px 0;">{url}</p>
+            <p style="font-size: 0.9em; color: #666;">Current file: <strong>{display_file}</strong></p>
+            <p style="font-family: monospace; word-break: break-all; margin: 15px 0; font-size: 0.85em;">{url}</p>
             <img src="data:image/png;base64,{qr_base64}" width="200" height="200">
             <p style="margin-top: 20px; font-size: 0.9em; color: #666;">ESC to close</p>
         </div>"""
@@ -106,7 +127,7 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
     def is_enabled(self):
         """Only enable when server is running"""
         return ServerManager.get_instance().is_running()
-
+    
 class LiveServerStartCommand(sublime_plugin.WindowCommand):
     """Enhanced start command with folder selection"""
     

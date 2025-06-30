@@ -93,8 +93,15 @@ class Server(threading.Thread):
                 free_port = get_free_port(49152, 65535)
                 
                 if free_port is None:
+                    # Close socket before raising
+                    if self.sock:
+                        try:
+                            self.sock.close()
+                        except:
+                            pass
+                        self.sock = None
                     error_msg = f"Port {port} is in use and no free port available."
-                    self.status.update('error', error=error_msg)  # Changed: removed port parameter, added error=
+                    self.status.update('error', error=error_msg)
                     error(error_msg)
                     raise
                     
@@ -103,14 +110,27 @@ class Server(threading.Thread):
                 self.settings._ephemeral_port_cache = free_port
                 
                 try:
-                    self.sock.bind((bind_host, free_port))  # IMPORTANT: Use bind_host here too!
+                    self.sock.bind((bind_host, free_port))
                     info(f"Successfully bound to {host}:{free_port}")
                 except OSError as bind_error:
-                    # Reset the cache if binding fails
+                    # Close socket and reset cache before raising
+                    if self.sock:
+                        try:
+                            self.sock.close()
+                        except:
+                            pass
+                        self.sock = None
                     self.settings._ephemeral_port_cache = None
                     error(f"Failed to bind to free port {free_port}: {bind_error}")
                     raise
             else:
+                # Close socket for any other error
+                if self.sock:
+                    try:
+                        self.sock.close()
+                    except:
+                        pass
+                    self.sock = None
                 error(f"Unexpected error binding to port: {e}")
                 raise
                 

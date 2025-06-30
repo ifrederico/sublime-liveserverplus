@@ -27,6 +27,7 @@ class FileWatcher(threading.Thread):
         # Add debounce tracking to prevent duplicate events
         self._last_events = {}
         self._debounce_time = 0.5  # seconds
+        self._debounce_lock = threading.Lock() 
         
         # Set up the observers for the folders
         self._setup_observers()
@@ -121,11 +122,20 @@ class FileWatcher(threading.Thread):
     def debounced_callback(self, file_path):
         """Call the callback with debouncing to prevent duplicate events"""
         current_time = time.time()
-        last_time = self._last_events.get(file_path, 0)
         
-        # Only trigger if enough time has passed since the last event for this file
-        if current_time - last_time > self._debounce_time:
-            self._last_events[file_path] = current_time
+        # Use lock to prevent race condition
+        with self._debounce_lock:
+            last_time = self._last_events.get(file_path, 0)
+            
+            # Only trigger if enough time has passed since the last event for this file
+            if current_time - last_time > self._debounce_time:
+                self._last_events[file_path] = current_time
+                should_callback = True
+            else:
+                should_callback = False
+        
+        # Call callback outside the lock to prevent deadlocks
+        if should_callback:
             self.callback(file_path)
 
 class WatchdogEventHandler(FileSystemEventHandler):

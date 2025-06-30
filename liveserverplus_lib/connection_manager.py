@@ -29,6 +29,7 @@ class ConnectionManager:
         self.last_cleanup = time.time()
         self.cleanup_interval = 60  # Cleanup old data every minute
         
+
     def configure(self, settings):
         """
         Configure from settings
@@ -37,7 +38,12 @@ class ConnectionManager:
             settings: Server settings object
         """
         if hasattr(settings, '_settings'):
-            self.max_threads = settings._settings.get('max_threads', 10)
+            # Get from nested 'connections' object
+            connections_config = settings._settings.get('connections', {})
+            self.max_threads = connections_config.get('max_threads', 10)
+            # Other connection settings
+            self.max_concurrent = connections_config.get('max_concurrent', 100)
+            self.timeout = connections_config.get('timeout', 30)
             
     def add_connection(self, conn, addr):
         """
