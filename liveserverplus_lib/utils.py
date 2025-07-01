@@ -206,16 +206,42 @@ def open_in_browser(url, browser_name=None):
         system = platform.system().lower()
         browser_name = browser_name.lower()
 
-        # Get browser command for current platform
-        if browser_name in BROWSER_COMMANDS:
-            if system in BROWSER_COMMANDS[browser_name]:
-                info(f"Opening URL in {browser_name} on {system}: {url}")
-                browser = webbrowser.get(BROWSER_COMMANDS[browser_name][system])
-                browser.open(url)
-                return
+        if system == 'darwin':  # macOS
+            # Use osascript for reliable browser control on macOS
+            browser_map = {
+                'chrome': 'Google Chrome',
+                'firefox': 'Firefox',
+                'safari': 'Safari',
+                'edge': 'Microsoft Edge'
+            }
+            
+            if browser_name in browser_map:
+                app_name = browser_map[browser_name]
+                info(f"Opening URL in {app_name} on macOS: {url}")
+                
+                import subprocess
+                try:
+                    # Use AppleScript to open URL in specific browser
+                    script = f'tell application "{app_name}" to open location "{url}"'
+                    subprocess.run(['osascript', '-e', script], check=True)
+                    return
+                except subprocess.CalledProcessError:
+                    info(f"Failed to open {app_name}, falling back to default browser")
+                    
+        else:
+            # Use the existing BROWSER_COMMANDS for other platforms
+            if browser_name in BROWSER_COMMANDS:
+                if system in BROWSER_COMMANDS[browser_name]:
+                    info(f"Opening URL in {browser_name} on {system}: {url}")
+                    try:
+                        browser = webbrowser.get(BROWSER_COMMANDS[browser_name][system])
+                        browser.open(url)
+                        return
+                    except Exception as e:
+                        info(f"Failed to use {browser_name}: {e}")
 
         # Fallback to default browser
-        info(f"Browser '{browser_name}' not available on {system}, using default")
+        info(f"Browser '{browser_name}' not available, using default")
         webbrowser.open(url)
         
     except Exception as e:
