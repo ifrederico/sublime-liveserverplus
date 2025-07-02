@@ -102,26 +102,43 @@ class WebSocketHandler:
         # Take a snapshot of the current clients under lock
         with self._lock:
             active_clients = list(self.clients)
+        
+        # Early exit if no clients
+        if not active_clients:
+            return
 
         # Send to each client outside the lock
-        dead_clients = set()
+        dead_clients = []
         for client in active_clients:
             try:
+                # Set a timeout for sending to prevent hanging
+                client.settimeout(1.0)
                 client.send(frame)
-            except (socket.error, OSError) as e:
+                # Reset timeout
+                client.settimeout(None)
+            except (socket.error, OSError, socket.timeout) as e:
                 info(f"Error sending to client: {e}")
-                dead_clients.add(client)
+                dead_clients.append(client)
+            except Exception as e:
+                error(f"Unexpected error sending to WebSocket client: {e}")
+                dead_clients.append(client)
 
-        # Reacquire lock to remove dead clients
-        with self._lock:
-            for client in dead_clients:
-                try:
-                    client.shutdown(socket.SHUT_RDWR)
-                except (socket.error, OSError):
-                    pass
-                finally:
-                    client.close()
-            self.clients.difference_update(dead_clients)
+        # Clean up dead clients
+        if dead_clients:
+            with self._lock:
+                for client in dead_clients:
+                    self.clients.discard(client)  # discard won't raise if not present
+                    try:
+                        client.shutdown(socket.SHUT_RDWR)
+                    except (socket.error, OSError):
+                        pass
+                    finally:
+                        try:
+                            client.close()
+                        except:
+                            pass
+            
+            info(f"Removed {len(dead_clients)} dead WebSocket clients")
         
     def _create_websocket_frame(self, message):
         """Return pre-computed frame if available, otherwise build it."""

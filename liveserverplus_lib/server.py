@@ -69,13 +69,37 @@ class Server(threading.Thread):
         """Set up the server socket with error handling"""
         import errno
         
+        # Clean up any existing socket first
+        if self.sock:
+            try:
+                self.sock.close()
+            except:
+                pass
+            self.sock = None
+        
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        
+        # Add SO_REUSEPORT on systems that support it
+        if hasattr(socket, 'SO_REUSEPORT'):
+            try:
+                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except (AttributeError, OSError):
+                # Not available on Windows or older systems
+                pass
+        
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         
+        # Set socket to non-blocking for shutdown
+        self.sock.setblocking(True)
+        
         # Optimize socket buffer sizes for better throughput
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)  # 64KB send buffer
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)  # 64KB receive buffer
+        try:
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)  # 64KB send buffer
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)  # 64KB receive buffer
+        except OSError:
+            # Some systems don't allow buffer size changes
+            pass
 
         host = self.settings.host
         port = self.settings.port
@@ -83,58 +107,73 @@ class Server(threading.Thread):
         # Always bind to 0.0.0.0 for network access when host is localhost/127.0.0.1
         bind_host = '0.0.0.0' if host in ['localhost', '127.0.0.1'] else host
         
-        try:
-            self.sock.bind((bind_host, port))  # IMPORTANT: Use bind_host here!
-            info(f"Successfully bound to {host}:{port}")  # Show user-friendly host
-        except OSError as e:
-            if e.errno == errno.EADDRINUSE:
-                # Port in use, try to find a free port
-                info(f"Port {port} is in use, searching for free port...")
-                free_port = get_free_port(49152, 65535)
+        # Try binding with increasing wait times
+        max_attempts = 3
+        attempt = 0
+        
+        while attempt < max_attempts:
+            try:
+                self.sock.bind((bind_host, port))
+                info(f"Successfully bound to {host}:{port}")
+                break
+            except OSError as e:
+                attempt += 1
                 
-                if free_port is None:
-                    # Close socket before raising
+                if e.errno == errno.EADDRINUSE:
+                    if attempt < max_attempts and port != 0:
+                        # Wait a bit for the port to be released
+                        wait_time = attempt * 0.5
+                        info(f"Port {port} is in use, waiting {wait_time}s before retry {attempt}/{max_attempts}")
+                        time.sleep(wait_time)
+                        continue
+                    
+                    # Port in use, try to find a free port
+                    info(f"Port {port} is in use after {attempt} attempts, searching for free port...")
+                    free_port = get_free_port(49152, 65535)
+                    
+                    if free_port is None:
+                        # Close socket before raising
+                        if self.sock:
+                            try:
+                                self.sock.close()
+                            except:
+                                pass
+                            self.sock = None
+                        error_msg = f"Port {port} is in use and no free port available."
+                        self.status.update('error', error=error_msg)
+                        error(error_msg)
+                        raise OSError(error_msg)
+                        
+                    info(f"Port {port} is in use. Using free port {free_port}.")
+                    self.settings._ephemeral_port_cache = free_port
+                    
+                    try:
+                        self.sock.bind((bind_host, free_port))
+                        info(f"Successfully bound to {host}:{free_port}")
+                        break
+                    except OSError as bind_error:
+                        # Close socket and reset cache before raising
+                        if self.sock:
+                            try:
+                                self.sock.close()
+                            except:
+                                pass
+                            self.sock = None
+                        self.settings._ephemeral_port_cache = None
+                        error(f"Failed to bind to free port {free_port}: {bind_error}")
+                        raise
+                else:
+                    # Close socket for any other error
                     if self.sock:
                         try:
                             self.sock.close()
                         except:
                             pass
                         self.sock = None
-                    error_msg = f"Port {port} is in use and no free port available."
-                    self.status.update('error', error=error_msg)
-                    error(error_msg)
+                    error(f"Unexpected error binding to port: {e}")
                     raise
                     
-                info(f"Port {port} is in use. Using free port {free_port}.")
-                # Only update the ephemeral cache, not the actual settings
-                self.settings._ephemeral_port_cache = free_port
-                
-                try:
-                    self.sock.bind((bind_host, free_port))
-                    info(f"Successfully bound to {host}:{free_port}")
-                except OSError as bind_error:
-                    # Close socket and reset cache before raising
-                    if self.sock:
-                        try:
-                            self.sock.close()
-                        except:
-                            pass
-                        self.sock = None
-                    self.settings._ephemeral_port_cache = None
-                    error(f"Failed to bind to free port {free_port}: {bind_error}")
-                    raise
-            else:
-                # Close socket for any other error
-                if self.sock:
-                    try:
-                        self.sock.close()
-                    except:
-                        pass
-                    self.sock = None
-                error(f"Unexpected error binding to port: {e}")
-                raise
-                
-        self.sock.listen(5)
+        self.sock.listen(128)  # Increase backlog for better connection handling
 
     def _setup_file_watcher(self):
         """Set up file watcher based on settings"""

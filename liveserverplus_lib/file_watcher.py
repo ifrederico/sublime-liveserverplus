@@ -125,6 +125,14 @@ class FileWatcher(threading.Thread):
         
         # Use lock to prevent race condition
         with self._debounce_lock:
+            # Clean up old entries to prevent memory leak
+            # Remove entries older than 60 seconds
+            self._last_events = {
+                path: timestamp 
+                for path, timestamp in self._last_events.items() 
+                if current_time - timestamp < 60
+            }
+            
             last_time = self._last_events.get(file_path, 0)
             
             # Only trigger if enough time has passed since the last event for this file

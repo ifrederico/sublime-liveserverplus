@@ -78,25 +78,38 @@ def create_file_reader(file_path, chunk_size=8192):
     Returns:
         generator: Generator that yields chunks of the file
     """
+    f = None
     try:
         # Get file size for progress reporting
         file_size = os.path.getsize(file_path)
         bytes_read = 0
         
         # Open file in binary mode
-        with open(file_path, 'rb') as f:
-            while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                    
-                bytes_read += len(chunk)
+        f = open(file_path, 'rb')
+        
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+                
+            bytes_read += len(chunk)
+            # Only log for large files to reduce noise
+            if file_size > 1024 * 1024:  # > 1MB
                 info(f"Read {bytes_read}/{file_size} bytes from {os.path.basename(file_path)}")
-                yield chunk
+            yield chunk
+            
     except Exception as e:
         error(f"Error reading file {file_path}: {e}")
+        # Always yield something to prevent hanging
         yield b''
-
+    finally:
+        # Ensure file is always closed
+        if f:
+            try:
+                f.close()
+            except Exception:
+                pass
+            
 # Compression functions
 def compress_data(data, mime_type=None, compression_level=6):
     """

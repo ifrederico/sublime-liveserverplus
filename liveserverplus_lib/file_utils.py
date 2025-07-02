@@ -1,9 +1,14 @@
 # liveserverplus_lib/file_utils.py
 """Centralized file handling utilities"""
 import os
+import time
 from .constants import TEXT_FILE_EXTENSIONS, MIME_TYPES
 from .text_utils import extract_file_extension
 from .logging import info, error
+
+# Add a cache at module level with size limit
+_mime_cache = {}
+_MIME_CACHE_MAX_SIZE = 1000  # Maximum number of entries
 
 
 def is_text_file(file_path):
@@ -23,13 +28,23 @@ def is_text_file(file_path):
 _mime_cache = {}
 
 def get_mime_type(file_path):
-    """Get MIME type for file path with caching."""
+    """Get MIME type for file path with caching and cache limit."""
     if not file_path:
         return 'application/octet-stream'
     
     # Check cache first
     if file_path in _mime_cache:
         return _mime_cache[file_path]
+    
+    # Clear cache if it's too large
+    if len(_mime_cache) > _MIME_CACHE_MAX_SIZE:
+        # Clear oldest half of entries
+        info(f"Clearing MIME cache, size: {len(_mime_cache)}")
+        items = list(_mime_cache.items())
+        _mime_cache.clear()
+        # Keep the newest half
+        for path, mime in items[len(items)//2:]:
+            _mime_cache[path] = mime
     
     ext = extract_file_extension(file_path)
     mime_type = MIME_TYPES.get(ext, 'application/octet-stream')

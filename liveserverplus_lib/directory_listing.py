@@ -14,11 +14,15 @@ from .file_utils import is_file_allowed
 
 class DirectoryListing:
     """Handles directory listing pages"""
+    
+    _MAX_CACHE_SIZE = 50  # Maximum number of cached directories
+    _CACHE_CLEANUP_INTERVAL = 300  # Clean cache every 5 minutes
 
     def __init__(self, settings=None):
         self.settings = settings
         self._cache = {}
         self._cache_time = {}
+        self._last_cleanup = time.time()
         self.cache_duration = 2  # seconds
 
         try:
@@ -29,6 +33,34 @@ class DirectoryListing:
         except Exception as e:
             error(f"Error loading template: {e}")
             self.template = "<html><body>Error loading template</body></html>"
+    
+    def _cleanup_cache(self):
+        """Clean up old cache entries to prevent memory growth"""
+        current_time = time.time()
+        
+        # Remove expired entries
+        expired_keys = [
+            key for key, cached_time in self._cache_time.items()
+            if current_time - cached_time > self.cache_duration
+        ]
+        
+        for key in expired_keys:
+            del self._cache[key]
+            del self._cache_time[key]
+        
+        # If still too large, remove oldest entries
+        if len(self._cache) > self._MAX_CACHE_SIZE:
+            # Sort by time and remove oldest
+            sorted_items = sorted(self._cache_time.items(), key=lambda x: x[1])
+            remove_count = len(self._cache) - self._MAX_CACHE_SIZE + 10  # Remove extra
+            
+            for key, _ in sorted_items[:remove_count]:
+                del self._cache[key]
+                del self._cache_time[key]
+            
+            info(f"Directory cache cleaned, removed {remove_count} entries")
+        
+        self._last_cleanup = current_time
         
     def get_file_info(self, path: str, entry: os.DirEntry = None) -> Dict[str, Any]:
         """Get standardized file information"""
@@ -83,10 +115,15 @@ class DirectoryListing:
 
     def generate_listing(self, dir_path: str, url_path: str, root_path: str) -> bytes:
         """Generate complete directory listing page"""
+        # Check if we need to clean cache
+        current_time = time.time()
+        if current_time - self._last_cleanup > self._CACHE_CLEANUP_INTERVAL:
+            self._cleanup_cache()
+        
         # Check cache first
         cache_key = f"{dir_path}:{url_path}"
         if cache_key in self._cache:
-            if time.time() - self._cache_time.get(cache_key, 0) < self.cache_duration:
+            if current_time - self._cache_time.get(cache_key, 0) < self.cache_duration:
                 return self._cache[cache_key]
             
         try:
@@ -125,30 +162,8 @@ class DirectoryListing:
             # Cache the result
             result = html.encode('utf-8')
             self._cache[cache_key] = result
-            self._cache_time[cache_key] = time.time()
+            self._cache_time[cache_key] = current_time
             return result
             
         except Exception as e:
             return f"<p>Error reading directory: {e}</p>".encode('utf-8')
-            
-    def _generate_item_html(self, item: Dict[str, Any]) -> str:
-        """Generate HTML for a single item row"""
-        # Use centralized file checking with optimized set
-        allowed_extensions = self.settings.allowed_file_types_set if self.settings else set()
-        is_allowed = is_file_allowed(item['name'], allowed_extensions)
-        
-        # Only add download attribute if it's a file (not a directory) and not allowed
-        download_attr = ' download' if not is_allowed and item['type'] != 'directory' else ''
-        
-        return f"""
-            <tr>
-                <td style="width: 40px">
-                    <div class="icon">{item['icon']}</div>
-                </td>
-                <td>
-                    <a href="{item['url']}"{download_attr}>{item['name']}</a>
-                </td>
-                <td class="size">{item['size']}</td>
-                <td class="modified">{item['modified']}</td>
-            </tr>
-        """
