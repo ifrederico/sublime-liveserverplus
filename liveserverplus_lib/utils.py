@@ -12,62 +12,12 @@ from .constants import SKIP_COMPRESSION_TYPES, BROWSER_COMMANDS
 # Import from new centralized modules
 from .file_utils import get_mime_type, is_binary_file
 
-# File detection and handling
-def detect_encoding(file_path, sample_size=4096):
-    """
-    Attempt to detect file encoding by reading a sample.
-    
-    Args:
-        file_path (str): Path to the file
-        sample_size (int): Number of bytes to sample
-        
-    Returns:
-        str: Detected encoding or 'utf-8' as fallback
-    """
-    try:
-        # Try to import chardet for encoding detection
-        try:
-            import chardet
-            has_chardet = True
-        except ImportError:
-            has_chardet = False
-            info("chardet not available for encoding detection, using fallbacks")
-        
-        # Read a sample of the file
-        with open(file_path, 'rb') as f:
-            sample = f.read(sample_size)
-        
-        if has_chardet:
-            # Use chardet if available
-            result = chardet.detect(sample)
-            encoding = result.get('encoding', 'utf-8')
-            confidence = result.get('confidence', 0)
-            
-            if encoding and confidence > 0.7:
-                info(f"Detected encoding for {file_path}: {encoding} (confidence: {confidence:.2f})")
-                return encoding
-        
-        # Fallback detection
-        if sample.startswith(b'\xef\xbb\xbf'):
-            return 'utf-8-sig'  # UTF-8 with BOM
-        elif sample.startswith(b'\xff\xfe'):
-            return 'utf-16-le'  # UTF-16 Little Endian
-        elif sample.startswith(b'\xfe\xff'):
-            return 'utf-16-be'  # UTF-16 Big Endian
-        
-        # Try to decode as UTF-8
-        try:
-            sample.decode('utf-8')
-            return 'utf-8'
-        except UnicodeDecodeError:
-            # If it's not UTF-8, try ISO-8859-1 as a fallback
-            return 'ISO-8859-1'
-            
-    except Exception as e:
-        info(f"Error detecting encoding for {file_path}: {e}")
-        return 'utf-8'
+# File detection and handlin
+def detectEncoding(file_path, sample_size=4096):
+    """Simple encoding detection - just return UTF-8"""
+    return 'utf-8'
 
-def create_file_reader(file_path, chunk_size=8192):
+def createFileReader(file_path, chunk_size=8192):
     """
     Create a generator that reads a file in chunks.
     
@@ -111,7 +61,7 @@ def create_file_reader(file_path, chunk_size=8192):
                 pass
             
 # Compression functions
-def compress_data(data, mime_type=None, compression_level=6):
+def compressData(data, mime_type=None, compression_level=6):
     """
     Compress data using gzip, skipping already compressed formats
     
@@ -124,7 +74,7 @@ def compress_data(data, mime_type=None, compression_level=6):
         bytes: Compressed data or original data if compression is skipped
     """
     # Skip compression for already compressed formats
-    if should_skip_compression(mime_type):
+    if shouldSkipCompression(mime_type):
         return data
             
     try:
@@ -133,7 +83,7 @@ def compress_data(data, mime_type=None, compression_level=6):
         error(f"Compression error: {e}")
         return data
 
-def stream_compress_data(data_generator, mime_type=None, compression_level=6):
+def streamCompressData(data_generator, mime_type=None, compression_level=6):
     """
     Compress data from a generator using gzip streaming.
     
@@ -146,7 +96,7 @@ def stream_compress_data(data_generator, mime_type=None, compression_level=6):
         generator: Generator yielding compressed chunks
     """
     # Skip compression for already compressed formats
-    if should_skip_compression(mime_type):
+    if shouldSkipCompression(mime_type):
         for chunk in data_generator:
             yield chunk
         return
@@ -187,7 +137,7 @@ def stream_compress_data(data_generator, mime_type=None, compression_level=6):
         for chunk in data_generator:
             yield chunk
 
-def should_skip_compression(mime_type):
+def shouldSkipCompression(mime_type):
     """
     Check if compression should be skipped for this MIME type
     
@@ -200,7 +150,7 @@ def should_skip_compression(mime_type):
     return mime_type in SKIP_COMPRESSION_TYPES
 
 # Browser and network utilities
-def open_in_browser(url, browser_name=None):
+def openInBrowser(url, browser_name=None):
     """
     Open URL in specified browser or system default
     
@@ -265,7 +215,7 @@ def open_in_browser(url, browser_name=None):
         except Exception:
             error(f"Failed to open URL: {url}")
 
-def is_valid_port(port):
+def isValidPort(port):
     """
     Check if port number is valid
     
@@ -277,7 +227,7 @@ def is_valid_port(port):
     """
     return isinstance(port, int) and 1 <= port <= 65535
 
-def get_free_port(start_port=8000, max_port=9000):
+def getFreePort(start_port=8000, max_port=9000):
     """
     Find a random available port in range
     
@@ -308,7 +258,7 @@ def get_free_port(start_port=8000, max_port=9000):
     return None
 
 # HTTP utilities
-def create_response_headers(content_length, content_type, compressed=False, extra_headers=None):
+def createResponseHeaders(content_length, content_type, compressed=False, extra_headers=None):
     """
     Create HTTP response headers
     
@@ -340,7 +290,7 @@ def create_response_headers(content_length, content_type, compressed=False, extr
         
     return headers
 
-def parse_query_string(path):
+def parseQueryString(path):
     """
     Parse query string from path
     
@@ -368,3 +318,15 @@ def parse_query_string(path):
     except Exception as e:
         error(f"Error parsing query string: {e}")
         return {}
+
+# Backwards compatibility aliases
+detect_encoding = detectEncoding
+create_file_reader = createFileReader
+compress_data = compressData
+stream_compress_data = streamCompressData
+should_skip_compression = shouldSkipCompression
+open_in_browser = openInBrowser
+is_valid_port = isValidPort
+get_free_port = getFreePort
+create_response_headers = createResponseHeaders
+parse_query_string = parseQueryString

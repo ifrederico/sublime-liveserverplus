@@ -9,7 +9,7 @@ from string import Template
 from .logging import info, error
 from .constants import FILE_ICONS, DEFAULT_FILE_ICON, DIRECTORY_ICON
 from .text_utils import format_file_size, extract_file_extension
-from .file_utils import is_file_allowed
+from .file_utils import isFileAllowed
 
 
 class DirectoryListing:

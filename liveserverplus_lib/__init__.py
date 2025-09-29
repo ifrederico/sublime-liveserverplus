@@ -28,13 +28,13 @@ __all__ = [
     
     # General utilities
     'get_mime_type',
-    'compress_data',
-    'stream_compress_data',
-    'detect_encoding',
-    'create_file_reader',
-    'get_free_port',
-    'open_in_browser',
-    'should_skip_compression',
+    'compressData',
+    'streamCompressData',
+    'detectEncoding',
+    'createFileReader',
+    'getFreePort',
+    'openInBrowser',
+    'shouldSkipCompression',
     
     # Text utilities
     'calculate_similarity',
@@ -65,9 +65,9 @@ __all__ = [
 ]
 
 # Base utilities that don't depend on other modules
-from .utils import (compress_data, stream_compress_data,
-                   detect_encoding, create_file_reader, get_free_port, 
-                   open_in_browser, should_skip_compression)
+from .utils import (compressData, streamCompressData,
+                   detectEncoding, createFileReader, getFreePort, 
+                   openInBrowser, shouldSkipCompression)
 from .settings import ServerSettings
 from .status import ServerStatus
 from .logging import info, error
@@ -83,7 +83,7 @@ from .text_utils import (calculate_similarity, find_similar_files,
                         extract_file_extension)
 
 # File utilities - including is_text_file and get_mime_type
-from .file_utils import (get_mime_type, is_file_allowed, is_text_file, 
+from .file_utils import (get_mime_type, isFileAllowed, is_text_file, 
                         should_compress_file)
 
 # HTTP utilities
@@ -101,3 +101,13 @@ from .request_handler import RequestHandler
 
 # Main server class that depends on other components
 from .server import Server
+# Backwards compatibility re-exports
+compress_data = compressData
+stream_compress_data = streamCompressData
+detect_encoding = detectEncoding
+create_file_reader = createFileReader
+get_free_port = getFreePort
+open_in_browser = openInBrowser
+should_skip_compression = shouldSkipCompression
+is_file_allowed = isFileAllowed
+

@@ -1,162 +1,290 @@
 # liveserverplus_lib/settings.py
+from __future__ import annotations
+
+import copy
+from typing import Any, Dict, List, Optional
+
 import sublime
-from .utils import get_free_port
+
+from .utils import getFreePort
+
+DEFAULT_ALLOWED_FILE_TYPES = [
+    '.html', '.htm', '.css', '.js', '.mjs',
+    '.jsx', '.tsx', '.ts', '.vue', '.svelte',
+    '.scss', '.sass', '.less', '.postcss',
+    '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.webp', '.avif',
+    '.woff', '.woff2', '.ttf', '.eot',
+    '.mp4', '.webm', '.ogg', '.mp3', '.wav',
+    '.pdf', '.json', '.xml', '.map', '.md', '.txt'
+]
+
+DEFAULT_SETTINGS: Dict[str, Any] = {
+    'customBrowser': '',
+    'donotShowInfoMsg': False,
+    'donotVerifyTags': False,
+    'fullReload': False,
+    'liveReload': False,
+    'host': '127.0.0.1',
+    'https': {
+        'enable': False,
+        'cert': '',
+        'key': '',
+        'passphrase': ''
+    },
+    'ignoreFiles': [
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/__pycache__/**'
+    ],
+    'ignoreDirs': [
+        'node_modules', '.git', '__pycache__',
+        '.svn', '.hg', '.sass-cache', '.pytest_cache'
+    ],
+    'logging': False,
+    'noBrowser': False,
+    'port': 0,
+    'proxy': {
+        'enable': False,
+        'baseUri': '/',
+        'proxyUri': 'http://127.0.0.1:80'
+    },
+    'showOnStatusbar': True,
+    'useLocalIp': False,
+    'useWebExt': False,
+    'wait': 100,
+    'maxThreads': 64,
+}
+
+
+def _deep_merge(target: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep merge dictionary values without mutating defaults."""
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            target[key] = _deep_merge(copy.deepcopy(target[key]), value)
+        else:
+            target[key] = value
+    return target
+
 
 class ServerSettings:
-    """Manages server settings with live reload capability and project support."""
-    
-    def __init__(self):
-        self._settings = None
-        self._ephemeral_port_cache = None
-        self._merged_settings = None
+    """Manages LiveServerPlus settings with project overrides."""
+
+    _global_ephemeral_port: Optional[int] = None
+
+    def __init__(self) -> None:
+        self._settings: Optional[sublime.Settings] = None
+        self._config: Dict[str, Any] = {}
+        self._allowed_types_cache: Optional[set[str]] = None
+        self._ephemeral_port_cache: Optional[int] = None
         self.load_settings()
-        
-    def load_settings(self):
-        """Load settings with project override support"""
-        # Remove previous listener if it exists
-        if hasattr(self, '_settings') and self._settings:
+
+    def load_settings(self) -> None:
+        """Load global and project-level settings."""
+        if self._settings:
             self._settings.clear_on_change('live_server_settings')
-        
-        # Clear cached values
-        if hasattr(self, '_allowed_types_cache'):
-            del self._allowed_types_cache
-        
-        # Load base settings
-        self._settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+
+        self._settings = sublime.load_settings('LiveServerPlus.sublime-settings')
         self._settings.add_on_change('live_server_settings', self.on_settings_change)
-        
-        # Get project-specific settings
+
+        base_config = copy.deepcopy(DEFAULT_SETTINGS)
+
+        # Apply user overrides from the global settings file
+        for key in DEFAULT_SETTINGS.keys():
+            value = self._settings.get(key)
+            if value is not None:
+                if isinstance(value, dict) and isinstance(base_config.get(key), dict):
+                    base_config[key] = _deep_merge(base_config[key], value)
+                else:
+                    base_config[key] = value
+
+        legacy_ignore_dirs = self._settings.get('ignore_dirs')
+        if legacy_ignore_dirs is not None:
+            base_config['ignoreDirs'] = legacy_ignore_dirs
+
+        # Apply project specific overrides ("liveserver" or "liveserverplus")
         window = sublime.active_window()
         if window:
-            project_data = window.project_data()
-            if project_data and 'liveserver' in project_data:
-                # Create a merged settings object
-                self._merged_settings = self._merge_settings(project_data['liveserver'])
-            else:
-                self._merged_settings = None
-        else:
-            self._merged_settings = None
-        
-        # Clear any previously cached ephemeral port whenever settings reload:
-        self._ephemeral_port_cache = None
+            project_data = window.project_data() or {}
+            project_settings = project_data.get('liveserverplus') or project_data.get('liveserver')
+            if isinstance(project_settings, dict):
+                for key, value in project_settings.items():
+                    if key not in DEFAULT_SETTINGS:
+                        if key == 'ignore_dirs':
+                            base_config['ignoreDirs'] = value
+                        continue
+                    if isinstance(value, dict) and isinstance(base_config.get(key), dict):
+                        base_config[key] = _deep_merge(base_config[key], value)
+                    else:
+                        base_config[key] = value
 
-    def _merge_settings(self, project_settings):
-        """Merge project settings with base settings"""
-        merged = {}
-        
-        # Get all base settings (removed old logging settings)
-        base_keys = ['host', 'port', 'browser', 'open_browser_on_start', 
-                     'allowed_file_types', 'ignore_dirs', 'live_reload',
-                     'enable_compression', 'cors_enabled', 'status_bar_enabled',
-                     'max_file_size', 'poll_interval', 'cache',
-                     'logging']
-        
-        for key in base_keys:
-            merged[key] = self._settings.get(key)
-        
-        # Deep merge for nested settings like live_reload
-        if 'live_reload' in project_settings and isinstance(project_settings['live_reload'], dict):
-            base_lr = merged.get('live_reload', {})
-            merged['live_reload'] = {**base_lr, **project_settings['live_reload']}
-            del project_settings['live_reload']
-        
-        # Override with project settings
-        for key, value in project_settings.items():
-            merged[key] = value
-            
-        return merged
-    
-    def get(self, key, default=None):
-        """Get setting with project override support"""
-        if self._merged_settings and key in self._merged_settings:
-            return self._merged_settings[key]
-        return self._settings.get(key, default)
+        self._config = base_config
+        self._allowed_types_cache = None
+        self._ephemeral_port_cache = ServerSettings._global_ephemeral_port
 
-    def on_settings_change(self):
-        """Reload settings (triggered when the user updates LiveServerPlus.sublime-settings)."""
+    def on_settings_change(self) -> None:
+        """Reload settings when LiveServerPlus.sublime-settings updates."""
         self.load_settings()
 
+    # ------------------------------------------------------------------
+    # Basic server configuration
+    # ------------------------------------------------------------------
     @property
-    def host(self):
-        """Return the server host."""
-        return self.get('host', 'localhost')
+    def host(self) -> str:
+        return str(self._config.get('host', DEFAULT_SETTINGS['host']))
 
     @property
-    def port(self):
-        """Return the server port with caching."""
+    def port(self) -> int:
         if self._ephemeral_port_cache is not None:
             return self._ephemeral_port_cache
-            
-        port = self.get('port', 8080)
-        if port == 0:
-            port = get_free_port(49152, 65535) or 8080
-            
-        self._ephemeral_port_cache = port
-        return port 
+
+        configured = int(self._config.get('port', DEFAULT_SETTINGS['port']))
+        if configured == 0:
+            if self._ephemeral_port_cache is not None:
+                configured = self._ephemeral_port_cache
+            else:
+                configured = getFreePort(49152, 65535) or 8080
+        self._ephemeral_port_cache = configured
+        ServerSettings._global_ephemeral_port = configured
+        return configured
 
     @property
-    def poll_interval(self):
-        """Return the file watcher poll interval (clamped between 0.1 and 10 seconds)."""
-        interval = float(self.get('poll_interval', 1.0))
-        return max(0.1, min(interval, 10.0))
+    def waitTimeMs(self) -> int:
+        try:
+            value = int(self._config.get('wait', DEFAULT_SETTINGS['wait']))
+        except (TypeError, ValueError):
+            value = DEFAULT_SETTINGS['wait']
+        return max(0, value)
 
     @property
-    def browser_open_on_start(self):
-        """Return True if the browser should be opened when the server starts."""
-        return bool(self.get('open_browser_on_start', True))
+    def fullReload(self) -> bool:
+        return bool(self._config.get('fullReload', DEFAULT_SETTINGS['fullReload']))
 
     @property
-    def allowed_file_types(self):
-        """Return a list of file extensions allowed to be served."""
-        return self.get('allowed_file_types', [
-            '.html', '.htm', '.css', '.js', '.mjs',
-            '.jpg', '.jpeg', '.png', '.gif', '.svg',
-            '.ico', '.woff', '.woff2', '.ttf', '.eot',
-            '.mp4', '.webm', '.mp3', '.wav', '.ogg',
-            '.pdf', '.json', '.xml', '.webp', '.map'
-        ])
+    def liveReload(self) -> bool:
+        return bool(self._config.get('liveReload', DEFAULT_SETTINGS['liveReload']))
 
     @property
-    def ignore_dirs(self):
-        """Return a list of directory names to ignore."""
-        return self.get('ignore_dirs', [
-            'node_modules', '.git', '__pycache__',
-            '.svn', '.hg', '.sass-cache', '.pytest_cache'
-        ])
+    def ignorePatterns(self) -> List[str]:
+        patterns = self._config.get('ignoreFiles', [])
+        if not isinstance(patterns, list):
+            return []
+        return [str(item) for item in patterns]
 
     @property
-    def max_file_size(self):
-        """Return the maximum file size (in MB) allowed to be served."""
-        return int(self.get('max_file_size', 100))
+    def ignoreExtensions(self) -> List[str]:
+        return []
 
     @property
-    def enable_compression(self):
-        """Return True if GZIP compression is enabled."""
-        return bool(self.get('enable_compression', True))
+    def ignoreDirs(self) -> List[str]:
+        dirs = self._config.get('ignoreDirs', DEFAULT_SETTINGS['ignoreDirs'])
+        if not isinstance(dirs, list):
+            return []
+        return [str(item) for item in dirs]
+
+    # ------------------------------------------------------------------
+    # HTTPS configuration
+    # ------------------------------------------------------------------
+    @property
+    def httpsEnabled(self) -> bool:
+        https_conf = self._config.get('https', {})
+        return bool(isinstance(https_conf, dict) and https_conf.get('enable'))
 
     @property
-    def cors_enabled(self):
-        """Return True if CORS headers should be enabled."""
-        return bool(self.get('cors_enabled', False))
+    def httpsConfig(self) -> Dict[str, str]:
+        https_conf = self._config.get('https', {})
+        if not isinstance(https_conf, dict):
+            return {'enable': False, 'cert': '', 'key': '', 'passphrase': ''}
+        merged = copy.deepcopy(DEFAULT_SETTINGS['https'])
+        merged.update({k: v for k, v in https_conf.items() if isinstance(v, str) or isinstance(v, bool)})
+        return merged
+
+    # ------------------------------------------------------------------
+    # Proxy configuration
+    # ------------------------------------------------------------------
+    @property
+    def proxyEnabled(self) -> bool:
+        proxy_conf = self._config.get('proxy', {})
+        return bool(isinstance(proxy_conf, dict) and proxy_conf.get('enable'))
 
     @property
-    def status_bar_enabled(self):
-        """Return True if the status bar should be updated."""
-        return bool(self.get('status_bar_enabled', True))
+    def proxyBaseUri(self) -> str:
+        proxy_conf = self._config.get('proxy', {})
+        base_uri = proxy_conf.get('baseUri') if isinstance(proxy_conf, dict) else '/'
+        base_uri = base_uri or '/'
+        if not base_uri.startswith('/'):
+            base_uri = '/' + base_uri
+        return base_uri.rstrip('/') or '/'
 
     @property
-    def browser(self):
-        """Return the preferred browser name (e.g. 'chrome', 'firefox')."""
-        return self.get('browser', '')
+    def proxyTarget(self) -> str:
+        proxy_conf = self._config.get('proxy', {})
+        target = proxy_conf.get('proxyUri') if isinstance(proxy_conf, dict) else ''
+        return str(target or '')
+
+    # ------------------------------------------------------------------
+    # Browser and UI configuration
+    # ------------------------------------------------------------------
+    @property
+    def customBrowser(self) -> str:
+        return str(self._config.get('customBrowser') or '').strip()
 
     @property
-    def max_threads(self):
-        """Return the maximum number of threads for the connection pool."""
-        return int(self.get('max_threads', 10))
-    
+    def noBrowser(self) -> bool:
+        return bool(self._config.get('noBrowser', DEFAULT_SETTINGS['noBrowser']))
+
     @property
-    def allowed_file_types_set(self):
-        """Return a set of lowercase allowed extensions for O(1) lookup"""
-        if not hasattr(self, '_allowed_types_cache'):
-            self._allowed_types_cache = {ext.lower() for ext in self.allowed_file_types}
+    def useLocalIp(self) -> bool:
+        return bool(self._config.get('useLocalIp', DEFAULT_SETTINGS['useLocalIp']))
+
+    @property
+    def useWebExt(self) -> bool:
+        return bool(self._config.get('useWebExt', DEFAULT_SETTINGS['useWebExt']))
+
+    @property
+    def showOnStatusbar(self) -> bool:
+        return bool(self._config.get('showOnStatusbar', DEFAULT_SETTINGS['showOnStatusbar']))
+
+    @property
+    def suppressInfoMessages(self) -> bool:
+        return bool(self._config.get('donotShowInfoMsg', DEFAULT_SETTINGS['donotShowInfoMsg']))
+
+    @property
+    def suppressTagWarnings(self) -> bool:
+        return bool(self._config.get('donotVerifyTags', DEFAULT_SETTINGS['donotVerifyTags']))
+
+    # ------------------------------------------------------------------
+    # Internal server tuning defaults
+    # ------------------------------------------------------------------
+    @property
+    def maxThreads(self) -> int:
+        try:
+            value = int(self._config.get('maxThreads', DEFAULT_SETTINGS['maxThreads']))
+        except (TypeError, ValueError):
+            value = DEFAULT_SETTINGS['maxThreads']
+        return max(4, min(value, 512))
+
+    @property
+    def maxFileSize(self) -> int:
+        return 100
+
+    @property
+    def enableCompression(self) -> bool:
+        return True
+
+    @property
+    def corsEnabled(self) -> bool:
+        return False
+
+    @property
+    def allowedFileTypes(self) -> List[str]:
+        return DEFAULT_ALLOWED_FILE_TYPES
+
+    @property
+    def allowedFileTypesSet(self) -> set:
+        if self._allowed_types_cache is None:
+            self._allowed_types_cache = {ext.lower() for ext in self.allowedFileTypes}
         return self._allowed_types_cache
+
+    def reset_ephemeral_port(self) -> None:
+        self._ephemeral_port_cache = None
+        ServerSettings._global_ephemeral_port = None

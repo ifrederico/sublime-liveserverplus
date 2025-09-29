@@ -4,6 +4,7 @@ import os
 import socket
 import threading
 import time
+import ssl
 from concurrent.futures import ThreadPoolExecutor
 
 from .websocket import WebSocketHandler
@@ -12,7 +13,7 @@ from .settings import ServerSettings
 from .status import ServerStatus
 from .request_handler import RequestHandler
 from .logging import info, error
-from .utils import get_free_port
+from .utils import getFreePort
 from .connection_manager import ConnectionManager
 
 
@@ -24,30 +25,36 @@ class Server(threading.Thread):
         self.folders = list(folders)
         self.folders_set = set(folders)
         self.settings = ServerSettings()
-        self.status = ServerStatus()
+        self.status = ServerStatus(self.settings)
         self.executor = ThreadPoolExecutor(
-            max_workers=self.settings.max_threads,
-                thread_name_prefix='LSP-Worker'
-            )
+            max_workers=self.settings.maxThreads,
+            thread_name_prefix='LSP-Worker'
+        )
         self.websocket = WebSocketHandler()
         self.websocket.settings = self.settings
         self.file_watcher = None
         self._stop_flag = False
         self.sock = None
         self.request_handler = None
-        
+        self._ssl_context = None
+        self.https_active = False
+
         # Initialize managers
-        
-        self.connection_manager = ConnectionManager.get_instance()
+
+        self.connection_manager = ConnectionManager.getInstance()
         self.connection_manager.configure(self.settings)
+
+        if self.settings.httpsEnabled:
+            self._ssl_context = self._createSslContext()
+            self.https_active = bool(self._ssl_context)
 
     def run(self):
         """Start the server"""
         try:
             info("Server starting...")
             self.status.update('starting')
-            self._setup_socket()
-            self._setup_file_watcher()
+            self._setupSocket()
+            self._setupFileWatcher()
             
             # Create request handler
             self.request_handler = RequestHandler(self)
@@ -57,7 +64,7 @@ class Server(threading.Thread):
             info(f"Server running on {self.settings.host}:{self.settings.port}")
             
             # Main connection loop
-            self._accept_connections()
+            self._acceptConnections()
             
         except Exception as e:
             error(f"Critical server error: {e}")
@@ -65,7 +72,7 @@ class Server(threading.Thread):
             error(traceback.format_exc())
             self.status.update('error', error=str(e))
 
-    def _setup_socket(self):
+    def _setupSocket(self):
         """Set up the server socket with error handling"""
         import errno
         
@@ -129,7 +136,7 @@ class Server(threading.Thread):
                     
                     # Port in use, try to find a free port
                     info(f"Port {port} is in use after {attempt} attempts, searching for free port...")
-                    free_port = get_free_port(49152, 65535)
+                    free_port = getFreePort(49152, 65535)
                     
                     if free_port is None:
                         # Close socket before raising
@@ -175,28 +182,65 @@ class Server(threading.Thread):
                     
         self.sock.listen(128)  # Increase backlog for better connection handling
 
-    def _setup_file_watcher(self):
-        """Set up file watcher based on settings"""
-        live_reload_settings = self.settings._settings.get("live_reload", {})
-        
-        if live_reload_settings.get("enabled", False):
-            info("live_reload.enabled is True => Skipping FileWatcher")
-            self.file_watcher = None
-        else:
-            info("live_reload.enabled is False => Starting Watchdog FileWatcher")
-            self.file_watcher = FileWatcher(self.folders, self.on_file_change, self.settings)
-            self.file_watcher.start()
+    def _createSslContext(self):
+        """Create SSL context when HTTPS is enabled."""
+        https_config = self.settings.httpsConfig
+        cert_path = https_config.get('cert')
+        key_path = https_config.get('key')
+        passphrase = https_config.get('passphrase') or None
 
-    def _accept_connections(self):
+        if not cert_path or not key_path:
+            error('HTTPS enabled but certificate or key path is missing. Falling back to HTTP.')
+            return None
+
+        try:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.options |= ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3
+            context.set_ciphers('TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256')
+            context.load_cert_chain(certfile=cert_path, keyfile=key_path, password=passphrase)
+            return context
+        except Exception as exc:
+            error(f'Failed to initialize SSL context: {exc}')
+            return None
+
+    def _setupFileWatcher(self):
+        """Set up file watcher based on settings"""
+        if self.file_watcher:
+            try:
+                self.file_watcher.stop()
+            except Exception:
+                pass
+
+        if self.settings.liveReload:
+            info("liveReload enabled - skipping Watchdog file watcher")
+            self.file_watcher = None
+            return
+
+        info("Starting Watchdog FileWatcher")
+        self.file_watcher = FileWatcher(self.folders, self.onFileChange, self.settings)
+        self.file_watcher.start()
+
+    def _acceptConnections(self):
         """Main connection acceptance loop"""
         while not self._stop_flag:
             try:
                 conn, addr = self.sock.accept()
-                
-                if self.connection_manager.add_connection(conn, addr):
+
+                if self._ssl_context:
+                    try:
+                        conn = self._ssl_context.wrap_socket(conn, server_side=True)
+                    except ssl.SSLError as err:
+                        error(f'SSL handshake failed: {err}')
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+                        continue
+
+                if self.connection_manager.addConnection(conn, addr):
                     # Submit to thread pool
                     self.executor.submit(
-                        self.request_handler.handle_connection,
+                        self.request_handler.handleConnection,
                         conn,
                         addr
                     )
@@ -208,11 +252,14 @@ class Server(threading.Thread):
                 if not self._stop_flag:
                     error(f"Error accepting connection: {e}")
 
-    def on_file_change(self, file_path):
+    def onFileChange(self, file_path):
         """Handle file changes by notifying WebSocket clients"""
         filename = os.path.basename(file_path)
         info(f"File changed: {filename}")
-        self.websocket.notify_clients(file_path)
+        self.websocket.notifyClients(file_path)
+
+    def on_file_change(self, file_path):
+        return self.onFileChange(file_path)
 
     def stop(self):
         """Stop the server with controlled cleanup"""
@@ -223,20 +270,20 @@ class Server(threading.Thread):
         self.status.update('stopping')
         self._stop_flag = True
 
-        self._shutdown_executor()
-        self._shutdown_file_watcher()
-        self._cleanup_connections()
-        self._close_socket()
+        self._shutdownExecutor()
+        self._shutdownFileWatcher()
+        self._cleanupConnections()
+        self._closeSocket()
         
         self.status.update('stopped')
         info("Server shutdown complete")
 
-    def _shutdown_executor(self):
+    def _shutdownExecutor(self):
         """Shutdown the thread pool executor"""
         info("Shutting down connection executor...")
         self.executor.shutdown(wait=False)
 
-    def _shutdown_file_watcher(self):
+    def _shutdownFileWatcher(self):
         """Shutdown file watcher with timeout"""
         if not self.file_watcher:
             return
@@ -278,14 +325,15 @@ class Server(threading.Thread):
             
         info("File watcher shutdown complete")
 
-    def _cleanup_connections(self):
+    def _cleanupConnections(self):
         """Clean up WebSocket and connection threads"""
         info("Closing WebSocket connections...")
+        self.websocket.shutdown()
         self.websocket.clients.clear()
-        
+
         info("Cleaning up connection threads...")
 
-    def _close_socket(self):
+    def _closeSocket(self):
         """Close the main server socket"""
         info("Closing main server socket...")
         if self.sock:

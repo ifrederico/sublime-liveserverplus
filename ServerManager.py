@@ -3,8 +3,9 @@ import sublime
 import threading
 import os
 from .liveserverplus_lib.server import Server
-from .liveserverplus_lib.utils import open_in_browser
+from .liveserverplus_lib.utils import openInBrowser
 from .liveserverplus_lib.logging import info, error
+from .liveserverplus_lib.qr_utils import get_local_ip
 
 class ServerManager:
     """Manages the lifecycle of LiveServerPlus server instances"""
@@ -13,7 +14,7 @@ class ServerManager:
     _lock = threading.Lock()
     
     @classmethod
-    def get_instance(cls):
+    def getInstance(cls):
         """Get or create singleton instance with thread safety"""
         with cls._lock:
             if cls._instance is None:
@@ -25,14 +26,14 @@ class ServerManager:
         self.restart_pending = False
         info("ServerManager initialized")
     
-    def is_running(self):
+    def isRunning(self):
         """Check if server is currently running"""
         return self.server is not None and self.server.is_alive()
     
     def start(self, folders):
         """Start the live server with given folders"""
         with self._lock:
-            if self.is_running():
+            if self.isRunning():
                 info("Server is already running")
                 return False
             
@@ -50,7 +51,7 @@ class ServerManager:
     def stop(self):
         """Stop the running live server"""
         with self._lock:
-            if not self.is_running():
+            if not self.isRunning():
                 info("No server running to stop")
                 return False
                 
@@ -70,62 +71,100 @@ class ServerManager:
         """Restart the server with possibly new folders"""
         with self._lock:
             info("Restarting server...")
-            was_running = self.is_running()
+            was_running = self.isRunning()
             if was_running:
                 self.stop()
             success = self.start(folders)
             return success and was_running
     
-    def get_server(self):
+    def getServer(self):
         """Get current server instance if running"""
-        return self.server if self.is_running() else None
+        return self.server if self.isRunning() else None
     
-    def get_current_status(self):
+    def getCurrentStatus(self):
         """Get current server status information"""
-        if not self.is_running() or not self.server:
+        if not self.isRunning() or not self.server:
             return 'stopped', None
         
         if hasattr(self.server, 'status'):
-            status, port = self.server.status.get_current_status()
+            status, port = self.server.status.getCurrentStatus()
             return status or 'running', port
         
         return 'running', getattr(self.server, 'port', None)
         
-    def open_in_browser(self, url_path, browser=None):
+    def openInBrowser(self, url_path, browser=None):
         """Open a specific path in browser via the server"""
-        server = self.get_server()
+        server = self.getServer()
         if not server:
             info("Cannot open browser - server not running")
             return False
-        
-        host = 'localhost'  # Instead of server.settings.host
+
+        if server.settings.noBrowser:
+            return False
+
+        protocol = 'https' if getattr(server, 'https_active', False) else 'http'
+
+        if server.settings.useLocalIp:
+            try:
+                host = get_local_ip()
+            except Exception:
+                host = server.settings.host or '127.0.0.1'
+        else:
+            host = server.settings.host or '127.0.0.1'
+
         port = server.settings.port
-        browser = browser or server.settings.browser
+        browser = browser or server.settings.customBrowser
         
         # Ensure path starts with / but doesn't have double //
         if url_path and not url_path.startswith('/'):
             url_path = f"/{url_path}"
             
-        url = f"http://{host}:{port}{url_path}"
+        if not url_path.startswith('/'):
+            url_path = '/' + url_path if url_path else '/'
+
+        url = f"{protocol}://{host}:{port}{url_path}"
         info(f"Opening URL in browser: {url}")
-        open_in_browser(url, browser)
+        openInBrowser(url, browser)
         return True
     
-    def is_file_allowed(self, file_path):
+    def isFileAllowed(self, file_path):
         """Check if file type is allowed by the server settings"""
-        server = self.get_server()
+        server = self.getServer()
         if not server:
             return False
             
         ext = os.path.splitext(file_path)[1].lower()
-        return any(ext == allowed_ext.lower() 
-                  for allowed_ext in server.settings.allowed_file_types)
+        return any(ext == allowed_ext.lower()
+                  for allowed_ext in server.settings.allowedFileTypes)
                   
-    def on_file_change(self, file_path):
+    def onFileChange(self, file_path):
         """Proxy for server's file change handler"""
-        server = self.get_server()
+        server = self.getServer()
         if server:
             info(f"File changed, notifying server: {file_path}")
-            server.on_file_change(file_path)
+            server.onFileChange(file_path)
             return True
         return False
+
+    # Backwards compatibility methods
+    @classmethod
+    def get_instance(cls):
+        return cls.getInstance()
+
+    def is_running(self):
+        return self.isRunning()
+
+    def get_server(self):
+        return self.getServer()
+
+    def get_current_status(self):
+        return self.getCurrentStatus()
+
+    def open_in_browser(self, url_path, browser=None):
+        return self.openInBrowser(url_path, browser)
+
+    def is_file_allowed(self, file_path):
+        return self.isFileAllowed(file_path)
+
+    def on_file_change(self, file_path):
+        return self.onFileChange(file_path)

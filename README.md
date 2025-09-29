@@ -34,9 +34,10 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 | ------ | ----------- |
 | **Start Server** | Starts the server (multi‑folder picker). |
 | **Stop Server** | Stops the server. |
-| **Open Current File** | Opens the active file through the server. |
+| **Open in Browser** | Opens the active file through the server. |
 | **Show Mobile QR Code** | Displays a QR linking devices on the LAN to the dev URL. |
-| **Live Reload** | Toggles live‑reload on or off. |
+| **Enable Live Reload** | Switch to Sublime-driven reload (auto-save option). |
+| **Disable Live Reload** | Return to Watchdog-based external file watching. |
 | **Change Port…** | Enter any port or **0** for “find a free one”. |
 | **Settings…** | Opens the user settings file. |
 
@@ -46,9 +47,10 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 
 - **Live Server Plus: Start Server**  
 - **Live Server Plus: Stop Server**  
-- **Live Server Plus: Open Current File in Browser**  
+- **Live Server Plus: Open in Browser**  
 - **Live Server Plus: Show Mobile QR Code**  
-- **Live Server Plus: Toggle Live Reload**  
+- **Live Server Plus: Enable Live Reload**  
+- **Live Server Plus: Disable Live Reload**  
 - **Live Server Plus: Change Port…**  
 - **Live Server Plus: Settings**
 
@@ -62,7 +64,7 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 
 ## Features
 
-- **Instant reload** on file changes; optional CSS‑only injection.  
+- **Instant reload** on file changes; optional CSS‑only injection. Enable Sublime-only mode when you want immediate reloads on save, or leave it disabled to monitor external tools via Watchdog.  
 - **Mobile preview**: scan a QR code to open the site on any device.  
 - **Port selection**: choose a port at startup or set `"port": 0` for a free one.  
 - **Two watcher modes**: Sublime on‑save events (fast) or Watchdog polling (external changes). 
@@ -87,31 +89,32 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 ```js
 // LiveServerPlus.sublime-settings (user)
 {
-    "host": "localhost",
-    "port": 0,                       // 0 = choose a free port
-    "open_browser_on_start": true,
-    "browser": "",                   // "chrome", "firefox", "edge", ...
-    "status_bar_enabled": true,
-
-    "live_reload": {
-        "enabled": false,
-        "css_injection": true,
-        "delay": 500,                // ms debounce (0 = instant)
-        "ignore_exts": [".log", ".map"]
+    "customBrowser": "",
+    "donotShowInfoMsg": false,
+    "donotVerifyTags": false,
+    "fullReload": false,
+    "liveReload": false,
+    "host": "127.0.0.1",
+    "maxThreads": 64,
+    "https": {
+        "enable": false,
+        "cert": "",
+        "key": "",
+        "passphrase": ""
     },
-
-    "enable_compression": true,
-    "cors_enabled": false,
-    "max_file_size": 100,            // MB
-
-    "connections": {
-        "max_concurrent": 100,
-        "timeout": 30,
-        "max_threads": 10
+    "ignoreFiles": ["**/node_modules/**", "**/.git/**", "**/__pycache__/**"],
+    "logging": false,
+    "noBrowser": false,
+    "port": 0,
+    "proxy": {
+        "enable": false,
+        "baseUri": "/api",
+        "proxyUri": "http://127.0.0.1:80"
     },
-
-    "allowed_file_types": [".html", ".css", ".js", "..."],
-    "ignore_dirs": ["node_modules", ".git", "__pycache__"]
+    "showOnStatusbar": true,
+    "useLocalIp": false,
+    "useWebExt": false,
+    "wait": 100
 }
 ```
 
@@ -128,8 +131,7 @@ Restart the server after changing settings.
 
 ## Known limitations
 
-- No built‑in HTTPS.
-- Watchdog mode watches up to 50 directories; switch to Sublime‑event mode for very large projects.
+- Watchdog mode watches up to 50 directories; adjust ignore globs or reduce scope for very large projects. When Live Reload is enabled, only saves inside Sublime trigger refreshes.
 
 ---
 

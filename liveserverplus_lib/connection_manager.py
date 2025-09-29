@@ -13,7 +13,7 @@ class ConnectionManager:
     _instance = None
     
     @classmethod
-    def get_instance(cls):
+    def getInstance(cls):
         """Get or create singleton instance"""
         if cls._instance is None:
             cls._instance = cls()
@@ -37,15 +37,9 @@ class ConnectionManager:
         Args:
             settings: Server settings object
         """
-        if hasattr(settings, '_settings'):
-            # Get from nested 'connections' object
-            connections_config = settings._settings.get('connections', {})
-            self.max_threads = connections_config.get('max_threads', 10)
-            # Other connection settings
-            self.max_concurrent = connections_config.get('max_concurrent', 100)
-            self.timeout = connections_config.get('timeout', 30)
+        self.max_threads = max(1, int(getattr(settings, 'maxThreads', 10)))
             
-    def add_connection(self, conn, addr):
+    def addConnection(self, conn, addr):
         """
         Add a new connection if below maximum. Send 503 if server is busy.
         
@@ -89,7 +83,7 @@ class ConnectionManager:
             info(f"New connection from {addr}, total active: {len(self.active_connections)}")
             return True
             
-    def remove_connection(self, conn):
+    def removeConnection(self, conn):
         """
         Remove a connection from the active set
         
@@ -117,7 +111,7 @@ class ConnectionManager:
             
         info(f"Cleaned up connection data for {len(stale_entries)} stale clients, active connections: {len(self.active_connections)}")
     
-    def get_stats(self):
+    def getStats(self):
         """
         Get statistics about connections
         
@@ -141,3 +135,17 @@ class ConnectionManager:
                 'unique_clients': unique_clients,
                 'top_clients': [{'ip': ip, 'requests': count} for ip, count in top_clients]
             }
+
+    # Backwards compatibility methods
+    @classmethod
+    def get_instance(cls):
+        return cls.getInstance()
+
+    def add_connection(self, conn, addr):
+        return self.addConnection(conn, addr)
+
+    def remove_connection(self, conn):
+        return self.removeConnection(conn)
+
+    def get_stats(self):
+        return self.getStats()

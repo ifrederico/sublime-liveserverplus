@@ -99,7 +99,7 @@ def generate_qr_code_base64(url):
         return ""
 
 
-def get_server_urls(host, port):
+def get_server_urls(host, port, protocol='http', prefer_local_ip=True):
     """
     Get all possible URLs for accessing the server.
 
@@ -113,15 +113,17 @@ def get_server_urls(host, port):
     urls = []
     
     # Always use network IP for mobile access
-    if host in ['localhost', '127.0.0.1', '0.0.0.0']:
+    scheme = protocol or 'http'
+
+    if prefer_local_ip and host in ['localhost', '127.0.0.1', '0.0.0.0']:
         local_ip = get_local_ip()
-        primary_url = f"http://{local_ip}:{port}"
+        primary_url = f"{scheme}://{local_ip}:{port}"
         urls.append(primary_url)
-        urls.append(f"http://localhost:{port}")
+        urls.append(f"{scheme}://localhost:{port}")
         if local_ip != "127.0.0.1":
-            urls.append(f"http://127.0.0.1:{port}")
+            urls.append(f"{scheme}://127.0.0.1:{port}")
     else:
-        primary_url = f"http://{host}:{port}"
+        primary_url = f"{scheme}://{host}:{port}"
         urls.append(primary_url)
 
     return {

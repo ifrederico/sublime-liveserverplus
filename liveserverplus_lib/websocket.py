@@ -15,17 +15,20 @@ class WebSocketHandler:
         # Set of connected WebSocket clients
         self.clients = set()
         
-        # A lock to protect self.clients from concurrent access
+        # Locks for connection and debounce management
         self._lock = threading.Lock()
-        
+        self._timer_lock = threading.Lock()
+
         # Load the injected HTML/JS for live reload
-        self._load_injected_code()
-        
+        self._loadInjectedCode()
+
         # Pre-compute common frames
-        self._reload_frame = self._build_websocket_frame('reload')
-        self._refreshcss_frame = self._build_websocket_frame('refreshcss')
-        
-    def _load_injected_code(self):
+        self._reload_frame = self._buildWebSocketFrame('reload')
+        self._refreshcss_frame = self._buildWebSocketFrame('refreshcss')
+        self._pending_timer = None
+        self._pending_message = None
+
+    def _loadInjectedCode(self):
         """Load WebSocket injection code from template"""
         try:
             resource_path = "Packages/LiveServerPlus/liveserverplus_lib/templates/websocket.html"
@@ -36,7 +39,7 @@ class WebSocketHandler:
             # Fallback to an empty script if the template can't be loaded
             self.INJECTED_CODE = "<script></script></body>"
         
-    def handle_websocket_upgrade(self, headers):
+    def handleWebSocketUpgrade(self, headers):
         """Handle WebSocket upgrade request, returning the response handshake or None."""
         ws_key = None
         for header in headers:
@@ -61,60 +64,73 @@ class WebSocketHandler:
             f"Sec-WebSocket-Accept: {ws_accept}\r\n\r\n"
         )
 
-    def add_client(self, client):
+    def addClient(self, client):
         """Add a client connection to the set in a thread-safe manner."""
         with self._lock:
             self.clients.add(client)
 
-    def remove_client(self, client):
+    def removeClient(self, client):
         """Remove a client connection from the set in a thread-safe manner."""
         with self._lock:
             if client in self.clients:
                 self.clients.remove(client)
 
-    def notify_clients(self, file_path):
+    def notifyClients(self, file_path):
         """
         Notify all connected WebSocket clients of file changes in a thread-safe manner,
         avoiding 'Set changed size during iteration' errors by taking a snapshot
         of self.clients before sending.
         """
-        # Try to retrieve live_reload settings from our attached settings.
-        if hasattr(self, 'settings'):
-            live_reload_settings = self.settings._settings.get("live_reload", {})
-        else:
-            # Fallback if no settings were attached.
-            live_reload_settings = sublime.load_settings("LiveServerPlus.sublime-settings").get("live_reload", {})
-
-        # Check the css_injection flag. If disabled, we force a full reload even for CSS files.
-        css_injection_enabled = live_reload_settings.get("css_injection", True)
-        if file_path.lower().endswith('.css') and css_injection_enabled:
-            message = 'refreshcss'
-        else:
+        full_reload = getattr(self.settings, 'fullReload', True)
+        if full_reload:
             message = 'reload'
-        
+        else:
+            message = 'refreshcss' if file_path.lower().endswith('.css') else 'reload'
+
+        wait_seconds = getattr(self.settings, 'waitTimeMs', 0) / 1000.0
+        if wait_seconds <= 0:
+            self._broadcast(message)
+            return
+
+        with self._timer_lock:
+            if message == 'reload':
+                self._pending_message = 'reload'
+            elif self._pending_message != 'reload':
+                self._pending_message = message
+
+            if self._pending_timer:
+                self._pending_timer.cancel()
+
+            self._pending_timer = threading.Timer(wait_seconds, self._flushPendingMessage)
+            self._pending_timer.daemon = True
+            self._pending_timer.start()
+
+    def _flushPendingMessage(self):
+        with self._timer_lock:
+            message = self._pending_message or 'reload'
+            self._pending_message = None
+            self._pending_timer = None
+        self._broadcast(message)
+
+    def _broadcast(self, message):
         # Build the frame for all clients
         try:
-            frame = self._create_websocket_frame(message)
+            frame = self._createWebSocketFrame(message)
         except Exception as e:
             error(f"Error creating frame: {e}")
             return
 
-        # Take a snapshot of the current clients under lock
         with self._lock:
             active_clients = list(self.clients)
-        
-        # Early exit if no clients
+
         if not active_clients:
             return
 
-        # Send to each client outside the lock
         dead_clients = []
         for client in active_clients:
             try:
-                # Set a timeout for sending to prevent hanging
                 client.settimeout(1.0)
                 client.send(frame)
-                # Reset timeout
                 client.settimeout(None)
             except (socket.error, OSError, socket.timeout) as e:
                 info(f"Error sending to client: {e}")
@@ -123,11 +139,10 @@ class WebSocketHandler:
                 error(f"Unexpected error sending to WebSocket client: {e}")
                 dead_clients.append(client)
 
-        # Clean up dead clients
         if dead_clients:
             with self._lock:
                 for client in dead_clients:
-                    self.clients.discard(client)  # discard won't raise if not present
+                    self.clients.discard(client)
                     try:
                         client.shutdown(socket.SHUT_RDWR)
                     except (socket.error, OSError):
@@ -135,27 +150,26 @@ class WebSocketHandler:
                     finally:
                         try:
                             client.close()
-                        except:
+                        except Exception:
                             pass
-            
             info(f"Removed {len(dead_clients)} dead WebSocket clients")
         
-    def _create_websocket_frame(self, message):
+    def _createWebSocketFrame(self, message):
         """Return pre-computed frame if available, otherwise build it."""
         if message == 'reload':
             return self._reload_frame
         elif message == 'refreshcss':
             return self._refreshcss_frame
-        return self._build_websocket_frame(message)
+        return self._buildWebSocketFrame(message)
 
-    def _build_websocket_frame(self, message):
+    def _buildWebSocketFrame(self, message):
         """Build a WebSocket text frame from a string message."""
         frame = bytearray()
         frame.append(0x81)  # FIN + text frame
-        
+
         msg_bytes = message.encode('utf-8', errors='replace')
         length = len(msg_bytes)
-        
+
         if length <= 125:
             frame.append(length)
         elif length <= 65535:
@@ -167,3 +181,10 @@ class WebSocketHandler:
             
         frame.extend(msg_bytes)
         return bytes(frame)  # Return immutable bytes
+
+    def shutdown(self):
+        with self._timer_lock:
+            if self._pending_timer:
+                self._pending_timer.cancel()
+                self._pending_timer = None
+            self._pending_message = None

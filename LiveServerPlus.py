@@ -3,6 +3,8 @@ import sublime
 import sublime_plugin
 import os
 import sys
+import time
+from pathlib import PurePosixPath
 
 # Ignore fsevents
 import warnings
@@ -15,36 +17,74 @@ if VENDOR_PATH not in sys.path:
     sys.path.insert(0, VENDOR_PATH)
 
 # Now the imports will work
-from .liveserverplus_lib.utils import open_in_browser
+from .liveserverplus_lib.utils import openInBrowser
 from .liveserverplus_lib.logging import info, error
 from .ServerManager import ServerManager
 
 from .liveserverplus_lib.qr_utils import (get_server_urls, generate_qr_code_base64, HAS_QR_SUPPORT, get_local_ip)
 
+
+_last_modified = {}
+
 def is_server_running():
     """Check if server is currently running - compatibility function"""
-    return ServerManager.get_instance().is_running()
+    return ServerManager.getInstance().isRunning()
 
 def live_server_start(folders):
     """Start the live server with given folders - compatibility function"""
-    return ServerManager.get_instance().start(folders)
+    return ServerManager.getInstance().start(folders)
 
 def live_server_stop():
     """Stop the running live server - compatibility function"""
-    return ServerManager.get_instance().stop()
+    return ServerManager.getInstance().stop()
 
-def is_file_allowed(file_path):
+def isFileAllowed(file_path):
     """Check if file type is allowed by the server settings - compatibility function"""
-    return ServerManager.get_instance().is_file_allowed(file_path)
+    return ServerManager.getInstance().isFileAllowed(file_path)
+
+
+# Backwards compatibility alias
+def is_file_allowed(file_path):
+    return isFileAllowed(file_path)
+
+
+def _info_messages_enabled():
+    manager = ServerManager.getInstance()
+    server = manager.getServer()
+    if server:
+        return not server.settings.suppressInfoMessages
+    settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+    return not settings.get('donotShowInfoMsg', False)
+
+
+def _status_message(message):
+    if _info_messages_enabled():
+        sublime.status_message(message)
+
+
+def _matches_ignore_patterns(file_path, patterns):
+    if not patterns:
+        return False
+
+    normalized_path = os.path.normpath(file_path).replace('\\', '/')
+    path_obj = PurePosixPath(normalized_path)
+
+    for pattern in patterns:
+        if not pattern:
+            continue
+        normalized_pattern = pattern.replace('\\', '/')
+        if path_obj.match(normalized_pattern):
+            return True
+    return False
 
 class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
     """Show QR code for mobile device access"""
     
     def run(self):
-        manager = ServerManager.get_instance()
+        manager = ServerManager.getInstance()
         
-        if not manager.is_running():
-            sublime.status_message("Live Server is not running")
+        if not manager.isRunning():
+            _status_message("Live Server is not running")
             return
         
         if not HAS_QR_SUPPORT:
@@ -54,16 +94,19 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
             )
             return
             
-        server = manager.get_server()
+        server = manager.getServer()
         if not server:
             return
             
         # Get server info
-        host = server.settings.host
+        protocol = 'https' if getattr(server, 'https_active', False) else 'http'
+        configured_host = server.settings.host or '127.0.0.1'
+        prefer_local = server.settings.useLocalIp or configured_host in ['127.0.0.1', 'localhost', '0.0.0.0']
+        host = get_local_ip() if prefer_local else configured_host
         port = server.settings.port
-        
+
         # Get URLs
-        urls = get_server_urls(host, port)
+        urls = get_server_urls(host, port, protocol=protocol, prefer_local_ip=prefer_local)
         primary_url = urls['primary']
         
         # FIX: Get current file path and append to URL
@@ -82,7 +125,8 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
             if rel_path:
                 # Convert to URL format (forward slashes)
                 url_path = rel_path.replace(os.sep, '/')
-                primary_url = f"{primary_url}/{url_path}"
+                base = primary_url.rstrip('/')
+                primary_url = f"{base}/{url_path.lstrip('/')}"
         
         # Generate PNG QR code
         qr_base64 = generate_qr_code_base64(primary_url)
@@ -126,16 +170,16 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
     
     def is_enabled(self):
         """Only enable when server is running"""
-        return ServerManager.get_instance().is_running()
+        return ServerManager.getInstance().isRunning()
     
 class LiveServerStartCommand(sublime_plugin.WindowCommand):
     """Enhanced start command with folder selection"""
     
     def run(self, folders=None):
-        manager = ServerManager.get_instance()
+        manager = ServerManager.getInstance()
         
-        if manager.is_running():
-            sublime.status_message("Live Server is already running")
+        if manager.isRunning():
+            _status_message("Live Server is already running")
             return
         
         # If folders explicitly passed, use them
@@ -204,13 +248,13 @@ class LiveServerStartCommand(sublime_plugin.WindowCommand):
     
     def _start_server(self, folders):
         """Start server with given folders"""
-        manager = ServerManager.get_instance()
+        manager = ServerManager.getInstance()
         if manager.start(folders):
-            server = manager.get_server()
-            if server and server.settings.browser_open_on_start:
+            server = manager.getServer()
+            if server and not server.settings.noBrowser:
                 # Try to open the current file instead of root
                 view = self.window.active_view()
-                if view and view.file_name() and manager.is_file_allowed(view.file_name()):
+                if view and view.file_name() and manager.isFileAllowed(view.file_name()):
                     # Get relative path from the current file
                     file_path = view.file_name()
                     rel_path = None
@@ -219,48 +263,48 @@ class LiveServerStartCommand(sublime_plugin.WindowCommand):
                             rel_path = os.path.relpath(file_path, folder)
                             break
                     if rel_path:
-                        manager.open_in_browser(rel_path.replace(os.sep, '/'))
+                        manager.openInBrowser(rel_path.replace(os.sep, '/'))
                     else:
-                        manager.open_in_browser("/")
+                        manager.openInBrowser("/")
                 else:
-                    manager.open_in_browser("/")
+                    manager.openInBrowser("/")
                 
     def is_enabled(self):
-        return not ServerManager.get_instance().is_running()
+        return not ServerManager.getInstance().isRunning()
 
 class LiveServerStopCommand(sublime_plugin.WindowCommand):
     """Command to stop the Live Server"""
     
     def run(self):
-        manager = ServerManager.get_instance()
+        manager = ServerManager.getInstance()
         
-        if not manager.is_running():
-            sublime.status_message("Live Server is not running")
+        if not manager.isRunning():
+            _status_message("Live Server is not running")
             return
             
         if manager.stop():
-            sublime.status_message("Live Server stopped")
+            _status_message("Live Server stopped")
             
     def is_enabled(self):
-        return ServerManager.get_instance().is_running()
+        return ServerManager.getInstance().isRunning()
 
 class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
     """Command to open the current file in the browser (via Live Server)"""
     
     def run(self):
-        manager = ServerManager.get_instance()
+        manager = ServerManager.getInstance()
         
-        if not manager.is_running():
-            sublime.status_message("Live Server is not running")
+        if not manager.isRunning():
+            _status_message("Live Server is not running")
             return
             
         view = self.window.active_view()
         if not view or not view.file_name():
-            sublime.status_message("No file to open")
+            _status_message("No file to open")
             return
             
         file_path = view.file_name()
-        server = manager.get_server()
+        server = manager.getServer()
         
         # Find relative path from served folders
         rel_path = None
@@ -281,16 +325,16 @@ class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
         url_path = rel_path.replace(os.sep, '/')
         
         # For unsupported files, show the directory instead
-        if not manager.is_file_allowed(file_path):
+        if not manager.isFileAllowed(file_path):
             dir_path = os.path.dirname(url_path)
-            manager.open_in_browser(dir_path)
+            manager.openInBrowser(dir_path)
         else:
-            manager.open_in_browser(url_path)
+            manager.openInBrowser(url_path)
         
     def is_enabled(self):
-        manager = ServerManager.get_instance()
+        manager = ServerManager.getInstance()
         return (
-            manager.is_running() and 
+            manager.isRunning() and 
             bool(self.window.active_view() and self.window.active_view().file_name())
         )
 
@@ -298,12 +342,12 @@ class LiveServerChangePortCommand(sublime_plugin.WindowCommand):
     """Change server port via input panel"""
     
     def run(self):
-        manager = ServerManager.get_instance()
+        manager = ServerManager.getInstance()
         
         # Get current port
         current_port = "8080"
-        if manager.is_running():
-            server = manager.get_server()
+        if manager.isRunning():
+            server = manager.getServer()
             if server:
                 current_port = str(server.settings.port)
         else:
@@ -341,65 +385,130 @@ class LiveServerChangePortCommand(sublime_plugin.WindowCommand):
         sublime.save_settings("LiveServerPlus.sublime-settings")
         
         # Restart server if running
-        manager = ServerManager.get_instance()
-        if manager.is_running():
-            folders = manager.get_server().folders
+        manager = ServerManager.getInstance()
+        if manager.isRunning():
+            folders = manager.getServer().folders
             manager.stop()
             sublime.set_timeout(lambda: manager.start(folders), 100)
-            sublime.status_message(f"Restarting server on port {port}...")
+            _status_message(f"Restarting server on port {port}...")
         else:
-            sublime.status_message(f"Port changed to {port}")
+            _status_message(f"Port changed to {port}")
 
-class LiveServerToggleLiveReloadCommand(sublime_plugin.WindowCommand):
-    """Toggle live reload on/off"""
-    
-    def run(self):
+class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
+    """Enable or disable live reload via Sublime saves."""
+
+    def run(self, value):
         settings = sublime.load_settings("LiveServerPlus.sublime-settings")
-        live_reload = settings.get("live_reload", {})
-        current_state = live_reload.get("enabled", False)
-        
-        # Toggle the state
-        live_reload["enabled"] = not current_state
-        settings.set("live_reload", live_reload)
-        sublime.save_settings("LiveServerPlus.sublime-settings")
-        
-        # Show status message
-        status = "enabled" if live_reload["enabled"] else "disabled"
-        
-        # If server is running, stop it and inform user to restart
-        manager = ServerManager.get_instance()
-        if manager.is_running():
+        current_state = bool(settings.get("liveReload", False))
+        new_state = bool(value)
+
+        if current_state == new_state:
+            status = "enabled" if new_state else "disabled"
+            _status_message(f"Live reload {status}")
+            return
+
+        manager = ServerManager.getInstance()
+        if manager.isRunning():
+            folders = manager.getServer().folders
             manager.stop()
-            sublime.status_message(f"Live reload {status}. Server stopped - please restart the server for changes to take effect.")
-            
-            # Show an alert dialog for better visibility
-            sublime.message_dialog(
-                f"Live reload has been {status}.\n\n"
-                "The server has been stopped. Please start it again for the changes to take effect."
-            )
+            def restart():
+                settings.set("liveReload", new_state)
+                sublime.save_settings("LiveServerPlus.sublime-settings")
+                manager.start(folders)
+            sublime.set_timeout(restart, 300)
         else:
-            sublime.status_message(f"Live reload {status}")
-    
-    def is_enabled(self):
-        """Always enabled when editing web files"""
-        view = self.window.active_view()
+            settings.set("liveReload", new_state)
+            sublime.save_settings("LiveServerPlus.sublime-settings")
+
+        status = "enabled" if new_state else "disabled"
+        _status_message(f"Live reload {status}")
+
+    def _is_web_file(self, view):
         if not view or not view.file_name():
             return False
-            
         ext = os.path.splitext(view.file_name())[1].lower()
         web_extensions = ['.html', '.htm', '.css', '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte']
         return ext in web_extensions
-    
-    def description(self):
-        """Dynamic menu text based on current state"""
+
+    def is_enabled(self, value=True):
+        return self._is_web_file(self.window.active_view())
+
+    def is_visible(self, value=True):
+        if not self._is_web_file(self.window.active_view()):
+            return False
         settings = sublime.load_settings("LiveServerPlus.sublime-settings")
-        live_reload = settings.get("live_reload", {})
-        is_enabled = live_reload.get("enabled", False)
-        
-        if is_enabled:
-            return "Disable Live Reload"
-        else:
-            return "Enable Live Reload"
+        current_state = bool(settings.get("liveReload", False))
+        return bool(value) != current_state
+
+    def description(self, value=True):
+        return "Enable Live Reload" if value else "Disable Live Reload"
+
+
+class LiveServerPlusListener(sublime_plugin.EventListener):
+    """Triggers live reload when Sublime saves files."""
+
+    def __init__(self):
+        self._last_change_count = {}
+
+    def _should_trigger(self, manager, server, file_path):
+        if not file_path:
+            return False
+        if _matches_ignore_patterns(file_path, server.settings.ignorePatterns):
+            return False
+
+        ignore_exts = getattr(server.settings, 'ignoreExtensions', [])
+        lower_path = file_path.lower()
+        for ext in ignore_exts:
+            if lower_path.endswith(ext.lower()):
+                return False
+
+        return manager.isFileAllowed(file_path)
+
+    def on_post_save_async(self, view):
+        manager = ServerManager.getInstance()
+        server = manager.getServer()
+        if not server or not server.settings.liveReload:
+            return
+
+        file_path = view.file_name()
+        if not self._should_trigger(manager, server, file_path):
+            return
+
+        info(f"Live reload (save): {file_path}")
+        manager.onFileChange(file_path)
+
+    def on_modified_async(self, view):
+        manager = ServerManager.getInstance()
+        server = manager.getServer()
+        if not server or not server.settings.liveReload:
+            return
+
+        file_path = view.file_name()
+        if not self._should_trigger(manager, server, file_path):
+            return
+
+        change_count = view.change_count()
+        last_count = self._last_change_count.get(view.id(), -1)
+        if change_count == last_count:
+            return
+        self._last_change_count[view.id()] = change_count
+
+        delay_ms = server.settings.waitTimeMs
+        timestamp = time.time()
+        _last_modified[file_path] = timestamp
+
+        if delay_ms <= 0:
+            info(f"Live reload (instant): {file_path}")
+            view.run_command('save')
+            return
+
+        def check_debounce(v=view, path=file_path, stamp=timestamp):
+            if _last_modified.get(path) != stamp:
+                return
+            info(f"Live reload (debounced): {path}")
+            v.run_command('save')
+
+        sublime.set_timeout_async(check_debounce, delay_ms)
 
 class LiveServerContextProvider(sublime_plugin.EventListener):
     """Provides context for key bindings"""
@@ -408,7 +517,7 @@ class LiveServerContextProvider(sublime_plugin.EventListener):
         """Handle context queries for key bindings"""
         
         if key == "liveserver_running":
-            running = ServerManager.get_instance().is_running()
+            running = ServerManager.getInstance().isRunning()
             
             if operator == sublime.OP_EQUAL:
                 return running == operand
@@ -421,16 +530,16 @@ def plugin_loaded():
     """Called by Sublime Text when plugin is loaded."""
     info("Plugin loaded")
     # Initialize ServerManager singleton
-    ServerManager.get_instance()
+    ServerManager.getInstance()
 
 def plugin_unloaded():
     """Called by Sublime Text when plugin is unloaded."""
     try:
         info("Plugin unloading")
-        manager = ServerManager.get_instance()
-        if manager.is_running():
+        manager = ServerManager.getInstance()
+        if manager.isRunning():
             # Update status to "stopping" before stopping
-            server = manager.get_server()
+            server = manager.getServer()
             if server:
                 server.status.update('stopping')  # Changed from 'Server closing'
             manager.stop()
@@ -440,96 +549,3 @@ def plugin_unloaded():
         info("Plugin unloaded successfully")
     except Exception as e:
         error(f"Error during plugin unload: {e}")
-
-
-# ----------------------------------------------------
-# ADDED: Sublime-based Live Reload EventListener
-# ----------------------------------------------------
-import time
-
-_last_modified = {}
-
-class LiveServerPlusListener(sublime_plugin.EventListener):
-    """
-    If 'live_reload.enabled' == true, we skip the file watcher
-    and use Sublime's events to notify the server immediately
-    after a file is changed or saved. If 'false', we do nothing.
-    """
-    def __init__(self):
-        self._last_change_count = {}
-
-    def on_post_save_async(self, view):
-        """Immediately notify on file save (no debounce needed)."""
-        manager = ServerManager.get_instance()
-        server = manager.get_server()
-        
-        if not server:
-            return
-        
-        # Check if user turned on Sublime-based live reload
-        lr_settings = server.settings._settings.get("live_reload", {})
-        if not lr_settings.get("enabled", False):
-            return  # rely on the file watcher instead
-
-        file_path = view.file_name()
-        if not file_path:
-            return
-        
-        # We might skip certain extensions (log files, etc.)
-        ignore_exts = lr_settings.get("ignore_exts", [])
-        if any(file_path.lower().endswith(ext) for ext in ignore_exts):
-            return
-        
-        # If we got here => immediate reload
-        info(f"File saved, triggering reload: {file_path}")
-        manager.on_file_change(file_path)
-
-    def on_modified_async(self, view):
-        """
-        If 'delay' > 0, we do a small debounce to avoid reloading
-        on every keystroke. If 'delay' == 0, reload immediately.
-        """
-        # Skip if file hasn't actually changed
-        change_count = view.change_count()
-        last_count = self._last_change_count.get(view.id(), -1)
-        if change_count == last_count:
-            return
-        self._last_change_count[view.id()] = change_count
-        
-        manager = ServerManager.get_instance()
-        server = manager.get_server()
-        
-        if not server:
-            return
-        
-        lr_settings = server.settings._settings.get("live_reload", {})
-        if not lr_settings.get("enabled", False):
-            return  # If disabled, do nothing
-
-        file_path = view.file_name()
-        if not file_path:
-            return
-        
-        # Check if extension is ignored
-        ignore_exts = lr_settings.get("ignore_exts", [])
-        if any(file_path.lower().endswith(ext) for ext in ignore_exts):
-            return
-
-        delay_ms = lr_settings.get("delay", 0)
-        _last_modified[file_path] = time.time()
-        
-        if delay_ms <= 0:
-            # no debounce, immediate
-            info(f"File modified, auto-saving and triggering immediate reload: {file_path}")
-            view.run_command('save')  # Auto-save the file
-            # The on_post_save_async will handle the reload
-            return
-        
-        # Debounce with a callback
-        def check_debounce():
-            if (time.time() - _last_modified[file_path]) >= (delay_ms / 1000.0):
-                info(f"File modified, auto-saving and triggering debounced reload: {file_path}")
-                view.run_command('save')  # Auto-save the file
-                # The on_post_save_async will handle the reload
-        
-        sublime.set_timeout_async(check_debounce, delay_ms)

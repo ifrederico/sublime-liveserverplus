@@ -3,6 +3,7 @@
 import socket
 from http.client import responses
 from urllib.parse import unquote
+
 from .logging import info, error
 
 class HTTPResponse:
@@ -113,35 +114,51 @@ class HTTPRequest:
         self.version = None
         self.headers = {}
         self.query_params = {}
+        self.raw_target = None
+        self.query_string = ''
+        self.body = bytearray()
+        self.content_length = 0
         self.is_valid = False
         self._parse()
-        
+
     def _parse(self):
         """Parse the HTTP request"""
         try:
-            # Decode request
-            request_str = self.raw_data.decode('utf-8', errors='replace')
-            lines = request_str.split('\r\n')
-            
+            header_end = self.raw_data.find(b'\r\n\r\n')
+            if header_end == -1:
+                return
+
+            header_bytes = self.raw_data[:header_end]
+            body_bytes = self.raw_data[header_end + 4:]
+
+            try:
+                header_text = header_bytes.decode('iso-8859-1')
+            except UnicodeDecodeError:
+                header_text = header_bytes.decode('utf-8', errors='replace')
+
+            lines = header_text.split('\r\n')
+
             if not lines:
                 return
-                
+
             # Parse request line
             request_line = lines[0].split()
             if len(request_line) < 3:
                 info(f"Malformed request line: {lines[0]}")
                 return
-                
+
             self.method = request_line[0]
-            self.path = request_line[1]
+            self.raw_target = request_line[1]
             self.version = request_line[2]
-            
+
             # Parse query string
-            if '?' in self.path:
-                path_parts = self.path.split('?', 1)
-                self.path = path_parts[0]
-                self._parse_query_string(path_parts[1])
-            
+            target = self.raw_target
+            if '?' in target:
+                self.path, self.query_string = target.split('?', 1)
+                self._parse_query_string(self.query_string)
+            else:
+                self.path = target
+
             # Parse headers
             for line in lines[1:]:
                 if not line:
@@ -149,12 +166,15 @@ class HTTPRequest:
                 if ':' in line:
                     key, value = line.split(':', 1)
                     self.headers[key.strip().lower()] = value.strip()
-                    
+
+            self.content_length = int(self.headers.get('content-length', '0') or 0)
+            self.body = bytearray(body_bytes)
+
             self.is_valid = True
-            
+
         except Exception as e:
             error(f"Error parsing HTTP request: {e}")
-            
+
     def _parse_query_string(self, query_string):
         """Parse query parameters"""
         from urllib.parse import unquote
@@ -180,6 +200,14 @@ class HTTPRequest:
     def get_header(self, name, default=None):
         """Get a header value (case-insensitive)"""
         return self.headers.get(name.lower(), default)
+
+    def append_body(self, data):
+        if data:
+            self.body.extend(data)
+
+    @property
+    def body_bytes(self):
+        return bytes(self.body)
 
 
 # Common response builders

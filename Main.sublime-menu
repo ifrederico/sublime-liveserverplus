@@ -19,7 +19,7 @@
                     { "caption": "-" },
                     // File Actions
                     {
-                        "caption": "Open Current File in Browser",
+                        "caption": "Open in Browser",
                         "command": "open_current_file_live_server",
                     },
                     {
@@ -29,8 +29,16 @@
                     { "caption": "-" },
                     // Configuration
                     {
-                        "command": "live_server_toggle_live_reload",
+                        "caption": "Enable Live Reload",
+                        "command": "live_server_set_live_reload",
+                        "args": { "value": true }
                     },
+                    {
+                        "caption": "Disable Live Reload",
+                        "command": "live_server_set_live_reload",
+                        "args": { "value": false }
+                    },
+                    { "caption": "-" },
                     {
                         "caption": "Change Port...",
                         "command": "live_server_change_port",

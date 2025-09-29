@@ -3,6 +3,9 @@
 import os
 import socket
 import threading
+from http.client import HTTPConnection, HTTPSConnection
+from urllib.parse import urlparse
+
 from .http_utils import HTTPRequest, HTTPResponse, send_error_response, send_options_response
 from .file_server import FileServer
 from .websocket import WebSocketHandler
@@ -23,39 +26,64 @@ class RequestHandler:
         self.folders = server.folders
         self.websocket = server.websocket
         self.file_server = FileServer(self.settings)
-        self.connection_manager = ConnectionManager.get_instance()
+        self.connection_manager = ConnectionManager.getInstance()
         
-        # Set websocket injector on file server
-        self.file_server.websocket_injector = self._inject_websocket_script
+        # Configure websocket injection behaviour
+        if self.settings.useWebExt:
+            self.file_server.websocket_injector = None
+        else:
+            self.file_server.websocket_injector = self._injectWebsocketScript
         
-    def handle_connection(self, conn, addr):
+    def handleConnection(self, conn, addr):
         """Main connection handler with improved error handling"""
         current_thread = threading.current_thread()
         
         # Set connection timeout
         conn.settimeout(30)  # Use hardcoded 30 second timeout
-        
+
         try:
             # Receive and parse request
-            data = conn.recv(8192)
-            if not data:
-                info(f"Empty data received from {addr}")
+            data = bytearray()
+            header_terminated = False
+
+            while True:
+                chunk = conn.recv(8192)
+                if not chunk:
+                    break
+                data.extend(chunk)
+                if b"\r\n\r\n" in data:
+                    header_terminated = True
+                    break
+
+            if not header_terminated or not data:
+                info(f"Empty or malformed data received from {addr}")
                 return
-                
-            request = HTTPRequest(data)
+
+            request = HTTPRequest(bytes(data))
             if not request.is_valid:
                 send_error_response(conn, 400)
                 return
-                
+
+            # Read request body if Content-Length indicates more data
+            remaining = request.content_length - len(request.body)
+            while remaining > 0:
+                chunk = conn.recv(min(8192, remaining))
+                if not chunk:
+                    break
+                request.append_body(chunk)
+                remaining -= len(chunk)
+
             info(f"Request: {request.method} {request.path} from {addr}")
-            
+
             # Route request based on method and type
             if request.is_websocket_upgrade():
-                self._handle_websocket_upgrade(conn, request, addr)
+                self._handleWebSocketUpgrade(conn, request, addr)
+            elif self._shouldProxy(request):
+                self._handleProxyRequest(conn, request)
             elif request.method == 'GET':
-                self._handle_get_request(conn, request)
+                self._handleGetRequest(conn, request)
             elif request.method == 'HEAD':
-                self._handle_head_request(conn, request)
+                self._handleHeadRequest(conn, request)
             elif request.method == 'OPTIONS':
                 send_options_response(conn)
             else:
@@ -75,23 +103,23 @@ class RequestHandler:
             import traceback
             error(traceback.format_exc())
         finally:
-            self._cleanup_connection(conn, current_thread)
+            self._cleanupConnection(conn, current_thread)
             
-    def _handle_websocket_upgrade(self, conn, request, addr):
+    def _handleWebSocketUpgrade(self, conn, request, addr):
         """Handle WebSocket upgrade request"""
         info(f"WebSocket upgrade request from {addr}")
-        
+
         try:
             # Convert headers dict back to list format for websocket handler
             headers_list = []
             for key, value in request.headers.items():
                 headers_list.append(f"{key}: {value}")
-                
-            response = self.websocket.handle_websocket_upgrade(headers_list)
+
+            response = self.websocket.handleWebSocketUpgrade(headers_list)
             if response:
                 conn.send(response.encode())
-                self.websocket.add_client(conn)
-                self._handle_websocket_connection(conn)
+                self.websocket.addClient(conn)
+                self._handleWebSocketConnection(conn)
             else:
                 info(f"WebSocket upgrade failed for {addr}")
                 send_error_response(conn, 400, "Bad WebSocket Request")
@@ -99,7 +127,7 @@ class RequestHandler:
             error(f"Error during WebSocket upgrade: {e}")
             send_error_response(conn, 500)
             
-    def _handle_websocket_connection(self, conn):
+    def _handleWebSocketConnection(self, conn):
         """Keep WebSocket connection alive"""
         try:
             while not self.server._stop_flag:
@@ -113,25 +141,25 @@ class RequestHandler:
                 except Exception:
                     break
         finally:
-            self.websocket.remove_client(conn)
+            self.websocket.removeClient(conn)
             
-    def _handle_get_request(self, conn, request):
+    def _handleGetRequest(self, conn, request):
         """Handle GET requests"""
         path = request.path
-        
+
         # Basic validation for obvious attacks (full validation happens in file_server)
         if any(pattern in path for pattern in ['..', '//', '\\\\', '\x00']):
             send_error_response(conn, 400, "Bad Request")
             return
             
         # Try to serve file
-        if self.file_server.serve_file(conn, path, self.folders):
+        if self.file_server.serveFile(conn, path, self.folders):
             return
             
         # Generate 404 page
-        self._send_404(conn, path)
+        self._send404(conn, path)
         
-    def _handle_head_request(self, conn, request):
+    def _handleHeadRequest(self, conn, request):
         """Handle HEAD requests - properly check if resource exists"""
         path = request.path
         
@@ -166,13 +194,13 @@ class RequestHandler:
         response.set_header('Content-Length', str(file_info['size']))
         response.set_header('Accept-Ranges', 'bytes')
         
-        if self.settings.cors_enabled:
+        if self.settings.corsEnabled:
             response.add_cors_headers()
             
         # Send headers only for HEAD request
         response.send_headers_only(conn)
         
-    def _send_404(self, conn, path):
+    def _send404(self, conn, path):
         """Send 404 error page"""
         try:
             error_html = ErrorPages.get_404_page(path, self.folders, self.settings)
@@ -182,30 +210,150 @@ class RequestHandler:
             response.set_body(error_html)
             response.add_cache_headers('no-cache')
             
-            if self.settings.cors_enabled:
+            if self.settings.corsEnabled:
                 response.add_cors_headers()
                 
             response.send(conn)
         except Exception as e:
             error(f"Error sending 404 page: {e}")
             send_error_response(conn, 404)
+
+    def _shouldProxy(self, request):
+        if request.is_websocket_upgrade():
+            return False
+        if not self.settings.proxyEnabled:
+            return False
+        if not self.settings.proxyTarget:
+            return False
+
+        path = request.path or '/'
+        if path == '/ws':
+            return False
+        base_uri = self.settings.proxyBaseUri
+
+        if base_uri == '/':
+            return True
+
+        if path == base_uri:
+            return True
+
+        if path.startswith(base_uri + '/'):
+            return True
+
+        return False
+
+    def _handleProxyRequest(self, conn, request):
+        """Forward request to configured proxy target."""
+        target = self.settings.proxyTarget
+        parsed = urlparse(target)
+
+        if not parsed.scheme:
+            parsed = urlparse(f"http://{target}")
+
+        if not parsed.hostname:
+            info("Proxy target is invalid - missing hostname")
+            send_error_response(conn, 502, "Bad Gateway")
+            return
+
+        is_https = parsed.scheme == 'https'
+        port = parsed.port or (443 if is_https else 80)
+
+        upstream = None
+        try:
+            connection_cls = HTTPSConnection if is_https else HTTPConnection
+            upstream = connection_cls(parsed.hostname, port, timeout=30)
+
+            path_suffix = request.path or '/'
+            base_uri = self.settings.proxyBaseUri
+            if base_uri != '/' and path_suffix.startswith(base_uri):
+                path_suffix = path_suffix[len(base_uri):] or '/'
+
+            if not path_suffix.startswith('/'):
+                path_suffix = '/' + path_suffix
+
+            upstream_path = parsed.path or ''
+            if not upstream_path.endswith('/') and upstream_path:
+                combined_path = f"{upstream_path}{path_suffix}"
+            else:
+                combined_path = f"{upstream_path.rstrip('/')}{path_suffix}"
+
+            if request.query_string:
+                combined_path = f"{combined_path}?{request.query_string}"
+
+            hop_by_hop = {
+                'connection',
+                'keep-alive',
+                'proxy-authenticate',
+                'proxy-authorization',
+                'te',
+                'trailers',
+                'transfer-encoding',
+                'upgrade'
+            }
+
+            headers = {}
+            for key, value in request.headers.items():
+                if key in hop_by_hop:
+                    continue
+                headers[key.title()] = value
+
+            headers['Host'] = parsed.netloc or parsed.hostname
+
+            body = request.body_bytes if request.body else None
+            if body is not None and request.content_length:
+                headers['Content-Length'] = str(len(body))
+            elif request.method in ('POST', 'PUT', 'PATCH'):
+                headers.setdefault('Content-Length', '0')
+
+            upstream.request(request.method, combined_path, body=body, headers=headers)
+            response = upstream.getresponse()
+
+            response_body = response.read()
+            status_line = f"HTTP/1.1 {response.status} {response.reason}\r\n".encode('utf-8')
+            conn.send(status_line)
+
+            for header, value in response.getheaders():
+                lower = header.lower()
+                if lower in hop_by_hop or lower == 'content-length':
+                    continue
+                header_line = f"{header}: {value}\r\n".encode('utf-8')
+                conn.send(header_line)
+
+            conn.send(f"Content-Length: {len(response_body)}\r\n".encode('utf-8'))
+            conn.send(b"\r\n")
+
+            if response_body:
+                conn.sendall(response_body)
+
+        except Exception as exc:
+            error(f"Proxy request failed: {exc}")
+            send_error_response(conn, 502, "Bad Gateway")
+        finally:
+            try:
+                upstream.close()
+            except Exception:
+                pass
             
-    def _inject_websocket_script(self, content):
+    def _injectWebsocketScript(self, content):
         """Inject WebSocket script into HTML content"""
-        if isinstance(content, bytes):
+        if not isinstance(content, bytes):
+            return content
+
+        if self.settings.useWebExt:
+            return content
+
+        try:
             html_str = content.decode('utf-8', errors='replace')
-        else:
-            html_str = content
-            
-        # Use text_utils function for injection
-        injected = inject_before_tag(html_str, '</body>', self.websocket.INJECTED_CODE)
+            injected = inject_before_tag(html_str, '</body>', self.websocket.INJECTED_CODE)
+            return injected.encode('utf-8')
+        except:
+            # If anything fails, return content unchanged
+            return content
         
-        return injected.encode('utf-8')
-        
-    def _cleanup_connection(self, conn, thread):
+    def _cleanupConnection(self, conn, thread):
         """Clean up connection and thread"""
         # Remove from connection manager
-        self.connection_manager.remove_connection(conn)
+        self.connection_manager.removeConnection(conn)
 
         # Close connection
         try:

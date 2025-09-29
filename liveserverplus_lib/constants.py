@@ -202,29 +202,35 @@ TEXT_FILE_EXTENSIONS = {
     '.scss', '.sass', '.less', '.postcss'
 }
 
-# Default server settings
+# Default server settings (public export for tooling compatibility)
 DEFAULT_SETTINGS = {
-    'host': 'localhost',
-    'port': 8080,
-    'open_browser_on_start': True,
-    'browser': '',
-    'status_bar_enabled': True,
-    'logging': False,
-    'enable_compression': True,
-    'cors_enabled': False,
-    'max_file_size': 100,  # MB
-    'poll_interval': 1.0,
-    'live_reload': {
-        'enabled': False,
-        'css_injection': True,
-        'delay': 500,
-        'ignore_exts': ['.log', '.map']
+    'customBrowser': '',
+    'donotShowInfoMsg': False,
+    'donotVerifyTags': False,
+    'fullReload': False,
+    'host': '127.0.0.1',
+    'https': {
+        'enable': False,
+        'cert': '',
+        'key': '',
+        'passphrase': ''
     },
-    'connections': {
-        'max_concurrent': 100,
-        'timeout': 30,
-        'max_threads': 10
-    }
+    'ignoreFiles': [
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/__pycache__/**'
+    ],
+    'noBrowser': False,
+    'port': 0,
+    'proxy': {
+        'enable': False,
+        'baseUri': '/',
+        'proxyUri': ''
+    },
+    'showOnStatusbar': True,
+    'useLocalIp': False,
+    'useWebExt': False,
+    'wait': 100
 }
 
 # Socket error codes to ignore

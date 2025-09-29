@@ -1,7 +1,7 @@
 import os
 import threading
 import time
-from fnmatch import fnmatch
+from pathlib import PurePosixPath
 
 # Import Watchdog from the vendored location
 from .vendor.watchdog.observers import Observer
@@ -19,6 +19,7 @@ class FileWatcher(threading.Thread):
         self._stop_event = threading.Event()
         self.observer = Observer()
         self.event_handler = WatchdogEventHandler(self)
+        self._ignore_patterns = [self._normalize_pattern(p) for p in self.settings.ignorePatterns]
         
         # Set a limit to avoid too many open files
         self._max_directories = 50
@@ -31,7 +32,25 @@ class FileWatcher(threading.Thread):
         
         # Set up the observers for the folders
         self._setup_observers()
-    
+
+    def _normalize_pattern(self, pattern):
+        if not pattern:
+            return ''
+        normalized = pattern.replace('\\', '/').strip()
+        return normalized or ''
+
+    def _matches_ignore(self, path):
+        if not path or not self._ignore_patterns:
+            return False
+        normalized_path = os.path.normpath(path).replace('\\', '/')
+        path_obj = PurePosixPath(normalized_path)
+        for pattern in self._ignore_patterns:
+            if not pattern:
+                continue
+            if path_obj.match(pattern):
+                return True
+        return False
+
     def _setup_observers(self):
         """Set up Watchdog observers for each folder"""
         import os.path
@@ -45,7 +64,7 @@ class FileWatcher(threading.Thread):
                 
             # Skip directories in the ignore list
             folder_name = os.path.basename(folder)
-            if folder_name in self.settings.ignore_dirs:
+            if self._matches_ignore(folder):
                 info(f"Skipping ignored directory: {folder}")
                 continue
             
@@ -64,10 +83,10 @@ class FileWatcher(threading.Thread):
                 
                 for root, dirs, files in os.walk(folder):
                     # Filter out ignored directories
-                    dirs[:] = [d for d in dirs if d not in self.settings.ignore_dirs]
+                    dirs[:] = [d for d in dirs if d not in self.settings.ignoreDirs]
                     
                     # Check if this directory has any web files
-                    has_web_files = any(f.endswith(tuple(self.settings.allowed_file_types)) for f in files)
+                    has_web_files = any(f.endswith(tuple(self.settings.allowedFileTypes)) for f in files)
                     
                     if has_web_files:
                         web_dirs_to_watch.append(root)
@@ -125,7 +144,7 @@ class FileWatcher(threading.Thread):
         
         # Use lock to prevent race condition
         with self._debounce_lock:
-            # Clean up old entries to prevent memory leak
+        # Clean up old entries to prevent memory leak
             # Remove entries older than 60 seconds
             self._last_events = {
                 path: timestamp 
@@ -156,18 +175,17 @@ class WatchdogEventHandler(FileSystemEventHandler):
         """Check if a file should be watched based on extension and ignored directories"""
         if not filepath:
             return False
-            
+
         filename = os.path.basename(filepath)
-        
+
         # Check if the file matches allowed extensions
-        if not any(filename.endswith(ext) for ext in self.watcher.settings.allowed_file_types):
+        if not any(filename.endswith(ext) for ext in self.watcher.settings.allowedFileTypes):
             return False
-            
+
         # Check if the file is in an ignored directory
-        for ignored in self.watcher.settings.ignore_dirs:
-            if ignored in filepath:
-                return False
-                
+        if self.watcher._matches_ignore(filepath):
+            return False
+
         return True
     
     def on_modified(self, event):

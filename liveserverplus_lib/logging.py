@@ -5,11 +5,12 @@ from datetime import datetime
 # Global flag for logging state
 _enabled = False
 
-def _on_settings_change():
+def _onSettingsChange():
     """Update logging state when settings change"""
     global _enabled
     settings = sublime.load_settings("LiveServerPlus.sublime-settings")
     _enabled = settings.get("logging", False)
+_on_settings_change = _onSettingsChange
 
 def info(message):
     """Log an info message"""
@@ -25,5 +26,5 @@ def error(message):
 
 # Initialize settings and listener
 settings = sublime.load_settings("LiveServerPlus.sublime-settings")
-settings.add_on_change("lsp_logging_toggle", _on_settings_change)
-_on_settings_change()  # Initialize the flag
+settings.add_on_change("lsp_logging_toggle", _onSettingsChange)
+_onSettingsChange()  # Initialize the flag

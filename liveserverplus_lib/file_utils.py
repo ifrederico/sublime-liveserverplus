@@ -54,7 +54,7 @@ def get_mime_type(file_path):
     return mime_type
 
 
-def is_file_allowed(file_path, allowed_extensions_set):
+def isFileAllowed(file_path, allowed_extensions_set):
     """
     Check if file extension is in allowed set.
     

@@ -25,7 +25,14 @@
             },
             { "caption": "-" },
             {
-                "command": "live_server_toggle_live_reload",
+                "caption": "Enable Live Reload",
+                "command": "live_server_set_live_reload",
+                "args": {"value": true}
+            },
+            {
+                "caption": "Disable Live Reload",
+                "command": "live_server_set_live_reload",
+                "args": {"value": false}
             },
             { "caption": "-" },
             {

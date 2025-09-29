@@ -4,123 +4,81 @@
     // Basic Server Settings
     // ==========================================
 
-    // Hostname/IP where the server runs.
-    "host": "localhost",
+    // Hostname/IP where the server runs. Use 0.0.0.0 for LAN access.
+    "host": "127.0.0.1",
 
     // Port number (0 selects a random available port).
     "port": 0,
 
-    // Automatically opens the browser when server starts.
-    "open_browser_on_start": true,
+    // Browser to launch on start ("chrome", "firefox", "edge"). Leave empty for default.
+    "customBrowser": "",
 
-    // Specify the browser to open (leave empty for default).
-    // Examples: "chrome", "firefox", "edge"
-    "browser": "",
+    // Prevent automatically opening a browser when the server starts.
+    "noBrowser": false,
 
-    // Enable or disable status bar notifications.
-    "status_bar_enabled": true,
+    // Suppress informational status messages in Sublime's status bar.
+    "donotShowInfoMsg": false,
+
+    // Hide HTML tag verification warnings that appear when injection fails.
+    "donotVerifyTags": false,
+
+    // Use the machine's LAN IP instead of localhost when possible.
+    "useLocalIp": false,
+
+    // Use the browser extension workflow instead of script injection.
+    "useWebExt": false,
 
     // ==========================================
-    // Live Reload Configuration
+    // Live Reload
     // ==========================================
 
-    "live_reload": {
-        // Enable automatic reload on file changes.
-        "enabled": false,
+    // Enable Sublime-based live reload (disables Watchdog when true).
+    "liveReload": false,
 
-        // Inject CSS changes directly without full page reload.
-        "css_injection": true,
+    // Force full page reloads on every change (disables CSS-only hot reload).
+    "fullReload": false,
 
-        // Delay (in milliseconds) after changes before reload.
-        "delay": 500,
+    // Delay (ms) before WebSocket refresh notifications are sent; acts as debounce.
+    "wait": 100,
 
-        // File extensions to ignore during live reload.
-        "ignore_exts": [".log", ".map"]
+    // Glob patterns ignored by both Watchdog and Sublime live reload.
+    "ignoreFiles": [
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/__pycache__/**"
+    ],
+
+    // Maximum concurrent request handlers (higher handles more reload burst traffic).
+    "maxThreads": 64,
+
+    // ==========================================
+    // HTTPS
+    // ==========================================
+
+    "https": {
+        "enable": false,
+        "cert": "",
+        "key": "",
+        "passphrase": ""
     },
 
     // ==========================================
-    // Allowed File Types Served by Server
+    // Proxy
     // ==========================================
 
-    "allowed_file_types": [
-        // Basic Web Files
-        ".html", ".htm", ".css", ".js", ".mjs",
-
-        // Modern Framework Files
-        ".jsx", ".tsx", ".ts", ".vue", ".svelte",
-
-        // CSS Preprocessors
-        ".scss", ".sass", ".less", ".postcss",
-
-        // Image Formats
-        ".jpg", ".jpeg", ".png", ".gif", ".svg",
-        ".ico", ".webp", ".avif",
-
-        // Web Font Formats
-        ".woff", ".woff2", ".ttf", ".eot",
-
-        // Media Formats
-        ".mp4", ".webm", ".ogg", ".mp3", ".wav",
-
-        // Document & Data Formats
-        ".pdf", ".json", ".xml", ".map", ".md", ".txt"
-    ],
+    "proxy": {
+        "enable": false,
+        "baseUri": "/",
+        "proxyUri": "http://127.0.0.1:80"
+    },
 
     // ==========================================
-    // Advanced File Watcher Settings
+    // Logging & UI
     // ==========================================
 
-    // Interval (in seconds) between file polling checks.
-    "poll_interval": 1.0,
-
-    // Directories ignored by file watcher.
-    "ignore_dirs": [
-        "node_modules",
-        ".git",
-        "__pycache__",
-        ".svn",
-        ".hg",
-        ".sass-cache",
-        ".pytest_cache",
-        "dist",
-        "build",
-        "coverage",
-        ".next",
-        ".nuxt"
-    ],
-
-    // ==========================================
-    // Logging
-    // ==========================================
-
-    // Enable console logging (false = complete silence)
+    // Enable console logging for troubleshooting.
     "logging": false,
 
-    // ==========================================
-    // Connection Settings
-    // ==========================================
-
-    "connections": {
-        // Maximum number of concurrent connections
-        "max_concurrent": 100,
-        
-        // Connection timeout in seconds
-        "timeout": 30,
-
-        // Maximum threads for connection handling
-        "max_threads": 10  
-    },
-
-    // ==========================================
-    // Performance & Security Settings
-    // ==========================================
-
-    // Maximum file size served by the server (in MB).
-    "max_file_size": 100,
-
-    // Enable gzip compression for served files.
-    "enable_compression": true,
-
-    // Allow Cross-Origin Resource Sharing (CORS).
-    "cors_enabled": false
+    // Show server status text in Sublime's status bar.
+    "showOnStatusbar": true
 }

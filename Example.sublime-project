@@ -4,40 +4,29 @@
             "path": "."
         }
     ],
-    "liveserver": {
+    "liveserverplus": {
         "port": 3000,
-        "browser": "chrome",
-        "open_browser_on_start": true,
-        "live_reload": {
-            "enabled": true,
-            "delay": 100,
-            "css_injection": true
-        },
-        "allowed_file_types": [
-            ".html", ".htm", ".css", ".js", ".mjs",
-            ".jsx", ".tsx", ".ts", ".vue", ".svelte",
-            ".scss", ".sass", ".less", ".postcss",
-            ".jpg", ".jpeg", ".png", ".gif", ".svg",
-            ".ico", ".webp", ".avif",
-            ".woff", ".woff2", ".ttf", ".eot",
-            ".mp4", ".webm", ".ogg", ".mp3", ".wav",
-            ".pdf", ".json", ".xml", ".map", ".md", ".txt",
-            ".php"
+        "customBrowser": "chrome",
+        "useLocalIp": true,
+        "ignoreFiles": [
+            "**/node_modules/**",
+            "**/dist/**"
         ],
-        "ignore_dirs": [
-            "node_modules",
-            ".git",
-            "__pycache__",
-            ".svn",
-            ".hg",
-            ".sass-cache",
-            ".pytest_cache",
-            "dist",
-            "build",
-            "coverage",
-            ".next",
-            ".nuxt",
-            "vendor"
-        ]
+        "https": {
+            "enable": false,
+            "cert": "${project_path}/certs/dev.crt",
+            "key": "${project_path}/certs/dev.key",
+            "passphrase": ""
+        },
+        "proxy": {
+            "enable": true,
+            "baseUri": "/api",
+            "proxyUri": "http://127.0.0.1:80"
+        },
+        "wait": 150,
+        "fullReload": false,
+        "liveReload": false,
+        "maxThreads": 64,
+        "useWebExt": false
     }
 }

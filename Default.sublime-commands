@@ -11,7 +11,7 @@
     },
     // File/Browser Commands
     {
-        "caption": "Live Server Plus: Open Current File in Browser",
+        "caption": "Live Server Plus: Open in Browser",
         "command": "open_current_file_live_server"
     },
     {
@@ -20,8 +20,14 @@
     },
     // Configuration Commands
     {
-        "caption": "Live Server Plus: Toggle Live Reload",
-        "command": "live_server_toggle_live_reload"
+        "caption": "Live Server Plus: Enable Live Reload",
+        "command": "live_server_set_live_reload",
+        "args": {"value": true}
+    },
+    {
+        "caption": "Live Server Plus: Disable Live Reload",
+        "command": "live_server_set_live_reload",
+        "args": {"value": false}
     },
     {
         "caption": "Live Server Plus: Change Port...",
