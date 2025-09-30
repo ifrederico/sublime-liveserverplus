@@ -101,13 +101,3 @@ from .request_handler import RequestHandler
 
 # Main server class that depends on other components
 from .server import Server
-# Backwards compatibility re-exports
-compress_data = compressData
-stream_compress_data = streamCompressData
-detect_encoding = detectEncoding
-create_file_reader = createFileReader
-get_free_port = getFreePort
-open_in_browser = openInBrowser
-should_skip_compression = shouldSkipCompression
-is_file_allowed = isFileAllowed
-

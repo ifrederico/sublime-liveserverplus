@@ -43,11 +43,6 @@ def isFileAllowed(file_path):
     return ServerManager.getInstance().isFileAllowed(file_path)
 
 
-# Backwards compatibility alias
-def is_file_allowed(file_path):
-    return isFileAllowed(file_path)
-
-
 def _info_messages_enabled():
     manager = ServerManager.getInstance()
     server = manager.getServer()

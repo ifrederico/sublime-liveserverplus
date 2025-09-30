@@ -135,17 +135,3 @@ class ConnectionManager:
                 'unique_clients': unique_clients,
                 'top_clients': [{'ip': ip, 'requests': count} for ip, count in top_clients]
             }
-
-    # Backwards compatibility methods
-    @classmethod
-    def get_instance(cls):
-        return cls.getInstance()
-
-    def add_connection(self, conn, addr):
-        return self.addConnection(conn, addr)
-
-    def remove_connection(self, conn):
-        return self.removeConnection(conn)
-
-    def get_stats(self):
-        return self.getStats()

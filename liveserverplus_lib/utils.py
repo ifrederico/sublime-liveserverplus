@@ -318,15 +318,3 @@ def parseQueryString(path):
     except Exception as e:
         error(f"Error parsing query string: {e}")
         return {}
-
-# Backwards compatibility aliases
-detect_encoding = detectEncoding
-create_file_reader = createFileReader
-compress_data = compressData
-stream_compress_data = streamCompressData
-should_skip_compression = shouldSkipCompression
-open_in_browser = openInBrowser
-is_valid_port = isValidPort
-get_free_port = getFreePort
-create_response_headers = createResponseHeaders
-parse_query_string = parseQueryString

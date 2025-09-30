@@ -145,26 +145,3 @@ class ServerManager:
             server.onFileChange(file_path)
             return True
         return False
-
-    # Backwards compatibility methods
-    @classmethod
-    def get_instance(cls):
-        return cls.getInstance()
-
-    def is_running(self):
-        return self.isRunning()
-
-    def get_server(self):
-        return self.getServer()
-
-    def get_current_status(self):
-        return self.getCurrentStatus()
-
-    def open_in_browser(self, url_path, browser=None):
-        return self.openInBrowser(url_path, browser)
-
-    def is_file_allowed(self, file_path):
-        return self.isFileAllowed(file_path)
-
-    def on_file_change(self, file_path):
-        return self.onFileChange(file_path)
