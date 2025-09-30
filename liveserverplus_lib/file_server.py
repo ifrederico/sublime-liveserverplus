@@ -67,7 +67,8 @@ class FileServer:
             
     def _serveFile(self, conn, full_path, rel_path, base_folder):
         """Serve a single file with appropriate handling"""
-        info(f"DEBUG: _serveFile called for {full_path}") 
+        if getattr(self.settings, 'logging', False):
+            info(f"Serving file: {full_path}")
         # Use comprehensive path validation
         if not validate_and_secure_path(base_folder, rel_path):
             return self._sendForbidden(conn)
@@ -104,11 +105,7 @@ class FileServer:
                 
             with open(file_path, 'rb') as f:
                 content = f.read()
-            
-            # DEBUG: Check JPEG magic bytes
-            if file_path.lower().endswith(('.jpg', '.jpeg')):
-                info(f"DEBUG: Read {file_path}: size={len(content)}, first 10 bytes={content[:10].hex()}")
-                
+
             return content
                     
         except Exception as e:
@@ -118,7 +115,6 @@ class FileServer:
     def _sendFileContents(self, conn, file_path, mime_type):
         """Send file contents with optional WebSocket injection"""
         # Check file size first to avoid loading large files
-        info(f"DEBUG: _sendFileContents called for {file_path}") 
         try:
             file_size = os.path.getsize(file_path)
             # Large files should be streamed, not loaded into memory
@@ -131,18 +127,25 @@ class FileServer:
         if content is None:
             return False
             
-        # Inject WebSocket script for HTML files FIRST
+        # Inject WebSocket script for HTML files FIRST (before compression)
         if file_path.lower().endswith(('.html', '.htm')) and self.websocket_injector:
-            info(f"DEBUG: Calling websocket injector on {file_path}")
+            if getattr(self.settings, 'logging', False):
+                info(f"Injecting WebSocket code into {file_path}")
             content = self.websocket_injector(content)
-            
-        # Skip compression for now
+
+        # Apply compression if enabled and appropriate
         is_compressed = False
-        
-        # DEBUG: Check content before sending
-        if file_path.lower().endswith(('.jpg', '.jpeg')):
-            info(f"DEBUG: Sending {file_path}: size={len(content)}, first 10 bytes={content[:10].hex()}")
-            
+        if getattr(self.settings, 'enableCompression', False) and should_compress_file(file_path, mime_type):
+            try:
+                compressed = compressData(content, mime_type)
+                # Only use compressed version if it's actually smaller
+                if len(compressed) < len(content):
+                    content = compressed
+                    is_compressed = True
+            except Exception as e:
+                if getattr(self.settings, 'logging', False):
+                    error(f"Compression failed for {file_path}: {e}")
+
         response = create_file_response(
             content=content,
             mime_type=mime_type,

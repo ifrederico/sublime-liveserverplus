@@ -113,6 +113,17 @@ class DirectoryListing:
             error(f"Error generating items list for {dir_path}: {e}")
             return []
 
+    def _generate_item_html(self, item: Dict[str, Any]) -> str:
+        """Generate HTML row for a directory listing entry."""
+        return f'''
+            <tr>
+                <td><span class="icon">{item['icon']}</span></td>
+                <td><a href="{item['url']}">{item['name']}</a></td>
+                <td class="size">{item['size']}</td>
+                <td class="modified">{item['modified']}</td>
+            </tr>
+        '''
+
     def generate_listing(self, dir_path: str, url_path: str, root_path: str) -> bytes:
         """Generate complete directory listing page"""
         # Check if we need to clean cache

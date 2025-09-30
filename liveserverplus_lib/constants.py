@@ -1,6 +1,8 @@
 # liveserverplus_lib/constants.py
 """Shared constants and data structures"""
 
+import errno
+
 # File type to icon mapping for directory listings
 FILE_ICONS = {
     # HTML/Web
@@ -234,7 +236,7 @@ DEFAULT_SETTINGS = {
 }
 
 # Socket error codes to ignore
-IGNORED_SOCKET_ERRORS = {9, 57}  # Bad file descriptor, Socket not connected
+IGNORED_SOCKET_ERRORS = {errno.EBADF, errno.ENOTCONN}
 
 # File watcher settings
 MAX_WATCHED_DIRECTORIES = 50

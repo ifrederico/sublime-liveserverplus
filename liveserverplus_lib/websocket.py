@@ -18,6 +18,10 @@ class WebSocketHandler:
         # Locks for connection and debounce management
         self._lock = threading.Lock()
         self._timer_lock = threading.Lock()
+        self._settings_lock = threading.Lock()
+
+        # Settings reference provided by the server
+        self._settings = None
 
         # Load the injected HTML/JS for live reload
         self._loadInjectedCode()
@@ -27,6 +31,18 @@ class WebSocketHandler:
         self._refreshcss_frame = self._buildWebSocketFrame('refreshcss')
         self._pending_timer = None
         self._pending_message = None
+
+    @property
+    def settings(self):
+        """Thread-safe accessor for server settings."""
+        with self._settings_lock:
+            return self._settings
+
+    @settings.setter
+    def settings(self, value):
+        """Thread-safe setter for server settings."""
+        with self._settings_lock:
+            self._settings = value
 
     def _loadInjectedCode(self):
         """Load WebSocket injection code from template"""
