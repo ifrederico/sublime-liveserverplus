@@ -478,6 +478,9 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
         if not server or not server.settings.liveReload:
             return
 
+        if view.is_auto_complete_visible():
+            return
+
         file_path = view.file_name()
         if not self._should_trigger(manager, server, file_path):
             return
