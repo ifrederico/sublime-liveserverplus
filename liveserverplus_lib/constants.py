@@ -211,12 +211,6 @@ DEFAULT_SETTINGS = {
     'donotVerifyTags': False,
     'fullReload': False,
     'host': '127.0.0.1',
-    'https': {
-        'enable': False,
-        'cert': '',
-        'key': '',
-        'passphrase': ''
-    },
     'ignoreFiles': [
         '**/node_modules/**',
         '**/.git/**',
@@ -224,11 +218,6 @@ DEFAULT_SETTINGS = {
     ],
     'noBrowser': False,
     'port': 0,
-    'proxy': {
-        'enable': False,
-        'baseUri': '/',
-        'proxyUri': ''
-    },
     'showOnStatusbar': True,
     'useLocalIp': False,
     'useWebExt': False,

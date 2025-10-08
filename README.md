@@ -96,21 +96,10 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
     "liveReload": false,
     "host": "127.0.0.1",
     "maxThreads": 64,
-    "https": {
-        "enable": false,
-        "cert": "",
-        "key": "",
-        "passphrase": ""
-    },
     "ignoreFiles": ["**/node_modules/**", "**/.git/**", "**/__pycache__/**"],
     "logging": false,
     "noBrowser": false,
     "port": 0,
-    "proxy": {
-        "enable": false,
-        "baseUri": "/api",
-        "proxyUri": "http://127.0.0.1:80"
-    },
     "showOnStatusbar": true,
     "useLocalIp": false,
     "useWebExt": false,

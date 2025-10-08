@@ -94,7 +94,7 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
             return
             
         # Get server info
-        protocol = 'https' if getattr(server, 'https_active', False) else 'http'
+        protocol = 'http'
         configured_host = server.settings.host or '127.0.0.1'
         prefer_local = server.settings.useLocalIp or configured_host in ['127.0.0.1', 'localhost', '0.0.0.0']
         host = get_local_ip() if prefer_local else configured_host

@@ -12,17 +12,6 @@
             "**/node_modules/**",
             "**/dist/**"
         ],
-        "https": {
-            "enable": false,
-            "cert": "${project_path}/certs/dev.crt",
-            "key": "${project_path}/certs/dev.key",
-            "passphrase": ""
-        },
-        "proxy": {
-            "enable": true,
-            "baseUri": "/api",
-            "proxyUri": "http://127.0.0.1:80"
-        },
         "wait": 150,
         "fullReload": false,
         "liveReload": false,

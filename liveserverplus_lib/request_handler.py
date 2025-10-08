@@ -3,8 +3,6 @@
 import os
 import socket
 import threading
-from http.client import HTTPConnection, HTTPSConnection
-from urllib.parse import urlparse
 
 from .http_utils import HTTPRequest, HTTPResponse, send_error_response, send_options_response
 from .file_server import FileServer
@@ -78,8 +76,6 @@ class RequestHandler:
             # Route request based on method and type
             if request.is_websocket_upgrade():
                 self._handleWebSocketUpgrade(conn, request, addr)
-            elif self._shouldProxy(request):
-                self._handleProxyRequest(conn, request)
             elif request.method == 'GET':
                 self._handleGetRequest(conn, request)
             elif request.method == 'HEAD':
@@ -218,122 +214,6 @@ class RequestHandler:
             error(f"Error sending 404 page: {e}")
             send_error_response(conn, 404)
 
-    def _shouldProxy(self, request):
-        if request.is_websocket_upgrade():
-            return False
-        if not self.settings.proxyEnabled:
-            return False
-        if not self.settings.proxyTarget:
-            return False
-
-        path = request.path or '/'
-        if path == '/ws':
-            return False
-        base_uri = self.settings.proxyBaseUri
-
-        if base_uri == '/':
-            return True
-
-        if path == base_uri:
-            return True
-
-        if path.startswith(base_uri + '/'):
-            return True
-
-        return False
-
-    def _handleProxyRequest(self, conn, request):
-        """Forward request to configured proxy target."""
-        target = self.settings.proxyTarget
-        parsed = urlparse(target)
-
-        if not parsed.scheme:
-            parsed = urlparse(f"http://{target}")
-
-        if not parsed.hostname:
-            info("Proxy target is invalid - missing hostname")
-            send_error_response(conn, 502, "Bad Gateway")
-            return
-
-        is_https = parsed.scheme == 'https'
-        port = parsed.port or (443 if is_https else 80)
-
-        upstream = None
-        try:
-            connection_cls = HTTPSConnection if is_https else HTTPConnection
-            upstream = connection_cls(parsed.hostname, port, timeout=30)
-
-            path_suffix = request.path or '/'
-            base_uri = self.settings.proxyBaseUri
-            if base_uri != '/' and path_suffix.startswith(base_uri):
-                path_suffix = path_suffix[len(base_uri):] or '/'
-
-            if not path_suffix.startswith('/'):
-                path_suffix = '/' + path_suffix
-
-            upstream_path = parsed.path or ''
-            if not upstream_path.endswith('/') and upstream_path:
-                combined_path = f"{upstream_path}{path_suffix}"
-            else:
-                combined_path = f"{upstream_path.rstrip('/')}{path_suffix}"
-
-            if request.query_string:
-                combined_path = f"{combined_path}?{request.query_string}"
-
-            hop_by_hop = {
-                'connection',
-                'keep-alive',
-                'proxy-authenticate',
-                'proxy-authorization',
-                'te',
-                'trailers',
-                'transfer-encoding',
-                'upgrade'
-            }
-
-            headers = {}
-            for key, value in request.headers.items():
-                if key in hop_by_hop:
-                    continue
-                headers[key.title()] = value
-
-            headers['Host'] = parsed.netloc or parsed.hostname
-
-            body = request.body_bytes if request.body else None
-            if body is not None and request.content_length:
-                headers['Content-Length'] = str(len(body))
-            elif request.method in ('POST', 'PUT', 'PATCH'):
-                headers.setdefault('Content-Length', '0')
-
-            upstream.request(request.method, combined_path, body=body, headers=headers)
-            response = upstream.getresponse()
-
-            response_body = response.read()
-            status_line = f"HTTP/1.1 {response.status} {response.reason}\r\n".encode('utf-8')
-            conn.send(status_line)
-
-            for header, value in response.getheaders():
-                lower = header.lower()
-                if lower in hop_by_hop or lower == 'content-length':
-                    continue
-                header_line = f"{header}: {value}\r\n".encode('utf-8')
-                conn.send(header_line)
-
-            conn.send(f"Content-Length: {len(response_body)}\r\n".encode('utf-8'))
-            conn.send(b"\r\n")
-
-            if response_body:
-                conn.sendall(response_body)
-
-        except Exception as exc:
-            error(f"Proxy request failed: {exc}")
-            send_error_response(conn, 502, "Bad Gateway")
-        finally:
-            try:
-                upstream.close()
-            except Exception:
-                pass
-            
     def _injectWebsocketScript(self, content):
         """Inject WebSocket script into HTML content"""
         if not isinstance(content, bytes):

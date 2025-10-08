@@ -102,7 +102,7 @@ class ServerManager:
         if server.settings.noBrowser:
             return False
 
-        protocol = 'https' if getattr(server, 'https_active', False) else 'http'
+        protocol = 'http'
 
         if server.settings.useLocalIp:
             try:

@@ -25,12 +25,6 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     'fullReload': False,
     'liveReload': False,
     'host': '127.0.0.1',
-    'https': {
-        'enable': False,
-        'cert': '',
-        'key': '',
-        'passphrase': ''
-    },
     'ignoreFiles': [
         '**/node_modules/**',
         '**/.git/**',
@@ -43,11 +37,6 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     'logging': False,
     'noBrowser': False,
     'port': 0,
-    'proxy': {
-        'enable': False,
-        'baseUri': '/',
-        'proxyUri': 'http://127.0.0.1:80'
-    },
     'showOnStatusbar': True,
     'useLocalIp': False,
     'useWebExt': False,
@@ -101,11 +90,11 @@ class ServerSettings:
         if legacy_ignore_dirs is not None:
             base_config['ignoreDirs'] = legacy_ignore_dirs
 
-        # Apply project specific overrides ("liveserver" or "liveserverplus")
+        # Apply project specific overrides ("liveserverplus")
         window = sublime.active_window()
         if window:
             project_data = window.project_data() or {}
-            project_settings = project_data.get('liveserverplus') or project_data.get('liveserver')
+            project_settings = project_data.get('liveserverplus')
             if isinstance(project_settings, dict):
                 for key, value in project_settings.items():
                     if key not in DEFAULT_SETTINGS:
@@ -180,46 +169,6 @@ class ServerSettings:
         if not isinstance(dirs, list):
             return []
         return [str(item) for item in dirs]
-
-    # ------------------------------------------------------------------
-    # HTTPS configuration
-    # ------------------------------------------------------------------
-    @property
-    def httpsEnabled(self) -> bool:
-        https_conf = self._config.get('https', {})
-        return bool(isinstance(https_conf, dict) and https_conf.get('enable'))
-
-    @property
-    def httpsConfig(self) -> Dict[str, str]:
-        https_conf = self._config.get('https', {})
-        if not isinstance(https_conf, dict):
-            return {'enable': False, 'cert': '', 'key': '', 'passphrase': ''}
-        merged = copy.deepcopy(DEFAULT_SETTINGS['https'])
-        merged.update({k: v for k, v in https_conf.items() if isinstance(v, str) or isinstance(v, bool)})
-        return merged
-
-    # ------------------------------------------------------------------
-    # Proxy configuration
-    # ------------------------------------------------------------------
-    @property
-    def proxyEnabled(self) -> bool:
-        proxy_conf = self._config.get('proxy', {})
-        return bool(isinstance(proxy_conf, dict) and proxy_conf.get('enable'))
-
-    @property
-    def proxyBaseUri(self) -> str:
-        proxy_conf = self._config.get('proxy', {})
-        base_uri = proxy_conf.get('baseUri') if isinstance(proxy_conf, dict) else '/'
-        base_uri = base_uri or '/'
-        if not base_uri.startswith('/'):
-            base_uri = '/' + base_uri
-        return base_uri.rstrip('/') or '/'
-
-    @property
-    def proxyTarget(self) -> str:
-        proxy_conf = self._config.get('proxy', {})
-        target = proxy_conf.get('proxyUri') if isinstance(proxy_conf, dict) else ''
-        return str(target or '')
 
     # ------------------------------------------------------------------
     # Browser and UI configuration

@@ -4,7 +4,6 @@ import os
 import socket
 import threading
 import time
-import ssl
 from concurrent.futures import ThreadPoolExecutor
 
 from .websocket import WebSocketHandler
@@ -36,17 +35,12 @@ class Server(threading.Thread):
         self._stop_flag = False
         self.sock = None
         self.request_handler = None
-        self._ssl_context = None
-        self.https_active = False
 
         # Initialize managers
 
         self.connection_manager = ConnectionManager.getInstance()
         self.connection_manager.configure(self.settings)
 
-        if self.settings.httpsEnabled:
-            self._ssl_context = self._createSslContext()
-            self.https_active = bool(self._ssl_context)
 
     def run(self):
         """Start the server"""
@@ -182,27 +176,6 @@ class Server(threading.Thread):
                     
         self.sock.listen(128)  # Increase backlog for better connection handling
 
-    def _createSslContext(self):
-        """Create SSL context when HTTPS is enabled."""
-        https_config = self.settings.httpsConfig
-        cert_path = https_config.get('cert')
-        key_path = https_config.get('key')
-        passphrase = https_config.get('passphrase') or None
-
-        if not cert_path or not key_path:
-            error('HTTPS enabled but certificate or key path is missing. Falling back to HTTP.')
-            return None
-
-        try:
-            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            context.options |= ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3
-            context.set_ciphers('TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256')
-            context.load_cert_chain(certfile=cert_path, keyfile=key_path, password=passphrase)
-            return context
-        except Exception as exc:
-            error(f'Failed to initialize SSL context: {exc}')
-            return None
-
     def _setupFileWatcher(self):
         """Set up file watcher based on settings"""
         if self.file_watcher:
@@ -225,17 +198,6 @@ class Server(threading.Thread):
         while not self._stop_flag:
             try:
                 conn, addr = self.sock.accept()
-
-                if self._ssl_context:
-                    try:
-                        conn = self._ssl_context.wrap_socket(conn, server_side=True)
-                    except ssl.SSLError as err:
-                        error(f'SSL handshake failed: {err}')
-                        try:
-                            conn.close()
-                        except Exception:
-                            pass
-                        continue
 
                 if self.connection_manager.addConnection(conn, addr):
                     # Submit to thread pool
