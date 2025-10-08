@@ -27,7 +27,7 @@ class ServerStatus:
     def update(self, status: str, port: Optional[int] = None, error: Optional[str] = None) -> None:
         """Update the status bar and status message."""
         current_time = time.time()
-        if current_time - self._last_update < 0.1:
+        if status == self._current_status and current_time - self._last_update < 0.1:
             return
         self._last_update = current_time
 
