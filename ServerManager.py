@@ -112,7 +112,11 @@ class ServerManager:
         else:
             host = server.settings.host or '127.0.0.1'
 
-        port = server.settings.port
+        status_port = None
+        if hasattr(server, 'status'):
+            status_port = server.status.getCurrentStatus()[1]
+
+        port = status_port or server.settings.port
         browser = browser or server.settings.customBrowser
         
         # Ensure path starts with / but doesn't have double //

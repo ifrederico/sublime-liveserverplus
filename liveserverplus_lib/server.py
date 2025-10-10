@@ -129,10 +129,39 @@ class Server(threading.Thread):
                         time.sleep(wait_time)
                         continue
                     
-                    # Port in use, try to find a free port
-                    info(f"Port {port} is in use after {attempt} attempts, searching for free port...")
+                    # Port in use, try to find a nearby port
+                    info(f"Port {port} is in use after {attempt} attempts, looking for a nearby port...")
+                    fallback_port = None
+
+                    if port != 0:
+                        for offset in range(1, 21):
+                            candidate = port + offset
+                            if candidate > 65535:
+                                break
+                            try:
+                                self.sock.bind((bind_host, candidate))
+                                fallback_port = candidate
+                                info(f"Port {port} is in use. Using fallback port {candidate}.")
+                                break
+                            except OSError as bind_error:
+                                if bind_error.errno == errno.EADDRINUSE:
+                                    continue
+                                else:
+                                    error(f"Failed to bind to fallback port {candidate}: {bind_error}")
+                                    sublime.error_message(
+                                        "[LiveServerPlus] Unexpected error while binding to a fallback port.\n"
+                                        f"Details: {bind_error}"
+                                    )
+                                    raise
+
+                    if fallback_port is not None:
+                        self.settings._ephemeral_port_cache = fallback_port
+                        port = fallback_port
+                        break
+
+                    info(f"Port {port} is in use after trying nearby ports, searching for an available port...")
                     free_port = getFreePort(49152, 65535)
-                    
+
                     if free_port is None:
                         # Close socket before raising
                         if self.sock:
@@ -146,13 +175,12 @@ class Server(threading.Thread):
                         error(error_msg)
                         sublime.error_message(f"[LiveServerPlus] {error_msg}\n\nTry choosing a different port or closing other applications using it.")
                         raise OSError(error_msg)
-                        
-                    info(f"Port {port} is in use. Using free port {free_port}.")
-                    self.settings._ephemeral_port_cache = free_port
-                    
+
                     try:
                         self.sock.bind((bind_host, free_port))
-                        info(f"Successfully bound to {host}:{free_port}")
+                        info(f"Port {port} is in use. Using available port {free_port}.")
+                        self.settings._ephemeral_port_cache = free_port
+                        port = free_port
                         break
                     except OSError as bind_error:
                         # Close socket and reset cache before raising
@@ -163,7 +191,7 @@ class Server(threading.Thread):
                                 pass
                             self.sock = None
                         self.settings._ephemeral_port_cache = None
-                        error(f"Failed to bind to free port {free_port}: {bind_error}")
+                        error(f"Failed to bind to available port {free_port}: {bind_error}")
                         sublime.error_message(
                             "[LiveServerPlus] Could not bind to any port.\n"
                             "Please adjust the configured port or close programs using the port."

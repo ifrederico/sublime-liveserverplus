@@ -247,22 +247,35 @@ class LiveServerStartCommand(sublime_plugin.WindowCommand):
         if manager.start(folders):
             server = manager.getServer()
             if server and not server.settings.noBrowser:
-                # Try to open the current file instead of root
+                # Prepare desired path
+                target_path = "/"
                 view = self.window.active_view()
                 if view and view.file_name() and manager.isFileAllowed(view.file_name()):
-                    # Get relative path from the current file
                     file_path = view.file_name()
-                    rel_path = None
                     for folder in folders:
                         if file_path.startswith(folder):
                             rel_path = os.path.relpath(file_path, folder)
+                            target_path = rel_path.replace(os.sep, '/')
                             break
-                    if rel_path:
-                        manager.openInBrowser(rel_path.replace(os.sep, '/'))
+
+                def open_when_ready(path, attempt=0):
+                    if not manager.isRunning():
+                        return
+                    srv = manager.getServer()
+                    if not srv:
+                        if attempt < 20:
+                            sublime.set_timeout(lambda: open_when_ready(path, attempt + 1), 100)
+                        return
+                    port_ready = False
+                    if hasattr(srv, 'status'):
+                        status, bound_port = srv.status.getCurrentStatus()
+                        port_ready = bool(bound_port)
+                    if port_ready or attempt >= 20:
+                        manager.openInBrowser(path)
                     else:
-                        manager.openInBrowser("/")
-                else:
-                    manager.openInBrowser("/")
+                        sublime.set_timeout(lambda: open_when_ready(path, attempt + 1), 100)
+
+                sublime.set_timeout(lambda: open_when_ready(target_path), 150)
                 
     def is_enabled(self):
         return not ServerManager.getInstance().isRunning()
