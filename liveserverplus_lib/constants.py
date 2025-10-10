@@ -217,19 +217,16 @@ DEFAULT_SETTINGS = {
         '**/__pycache__/**'
     ],
     'noBrowser': False,
-    'port': 0,
+    'port': 5500,
     'showOnStatusbar': True,
     'useLocalIp': False,
     'useWebExt': False,
-    'wait': 100
+    'wait': 100,
+    'maxWatchedDirs': 50
 }
 
 # Socket error codes to ignore
 IGNORED_SOCKET_ERRORS = {errno.EBADF, errno.ENOTCONN}
-
-# File watcher settings
-MAX_WATCHED_DIRECTORIES = 50
-FILE_CHANGE_DEBOUNCE_TIME = 0.5  # seconds
 
 # Browser command mappings by platform
 BROWSER_COMMANDS = {
@@ -255,7 +252,4 @@ BROWSER_COMMANDS = {
 
 # Performance tuning constants
 STREAMING_THRESHOLD = 1024 * 1024  # 1MB - files larger than this are streamed
-DEFAULT_CHUNK_SIZE = 8192  # Default chunk size for file reading
 LARGE_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB - threshold for special handling
-STATUS_UPDATE_THROTTLE = 0.1  # Minimum seconds between status bar updates
-CACHE_DURATION = 2  # Directory listing cache duration in seconds

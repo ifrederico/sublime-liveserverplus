@@ -7,8 +7,8 @@
     // Hostname/IP where the server runs. Use 0.0.0.0 for LAN access.
     "host": "127.0.0.1",
 
-    // Port number (0 selects a random available port).
-    "port": 0,
+    // Port number for the server. Use 0 to select a random free port.
+    "port": 5500,
 
     // Browser to launch on start ("chrome", "firefox", "edge"). Leave empty for default.
     "customBrowser": "",
@@ -23,6 +23,8 @@
     "donotVerifyTags": false,
 
     // Use the machine's LAN IP instead of localhost when possible.
+    // WARNING: Setting "host" to "0.0.0.0" exposes the server to your local network.
+    // Only use that on trusted networks.
     "useLocalIp": false,
 
     // Use the browser extension workflow instead of script injection.
@@ -50,6 +52,9 @@
 
     // Maximum concurrent request handlers (higher handles more reload burst traffic).
     "maxThreads": 64,
+
+    // Maximum number of directories Watchdog will monitor (increase for large monorepos).
+    "maxWatchedDirs": 50,
 
     // ==========================================
     // Logging & UI

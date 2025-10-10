@@ -95,11 +95,13 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
     "fullReload": false,
     "liveReload": false,
     "host": "127.0.0.1",
+    // WARNING: use "0.0.0.0" only on trusted networks; it exposes the server to your LAN.
     "maxThreads": 64,
+    "maxWatchedDirs": 50,
     "ignoreFiles": ["**/node_modules/**", "**/.git/**", "**/__pycache__/**"],
     "logging": false,
     "noBrowser": false,
-    "port": 0,
+    "port": 5500,
     "showOnStatusbar": true,
     "useLocalIp": false,
     "useWebExt": false,
@@ -108,6 +110,8 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 ```
 
 Restart the server after changing settings.
+
+> **Security note:** Binding the server to `0.0.0.0` exposes it to every device on your local network. Only use that host value on trusted networks.
 
 ---
 

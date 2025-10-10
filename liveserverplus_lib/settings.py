@@ -36,12 +36,13 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     ],
     'logging': False,
     'noBrowser': False,
-    'port': 0,
+    'port': 5500,
     'showOnStatusbar': True,
     'useLocalIp': False,
     'useWebExt': False,
     'wait': 100,
     'maxThreads': 64,
+    'maxWatchedDirs': 50,
 }
 
 
@@ -211,6 +212,14 @@ class ServerSettings:
         except (TypeError, ValueError):
             value = DEFAULT_SETTINGS['maxThreads']
         return max(4, min(value, 512))
+
+    @property
+    def maxWatchedDirs(self) -> int:
+        try:
+            value = int(self._config.get('maxWatchedDirs', DEFAULT_SETTINGS['maxWatchedDirs']))
+        except (TypeError, ValueError):
+            value = DEFAULT_SETTINGS['maxWatchedDirs']
+        return max(10, min(value, 5000))
 
     @property
     def maxFileSize(self) -> int:

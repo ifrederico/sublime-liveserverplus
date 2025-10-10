@@ -4,6 +4,7 @@ import os
 import socket
 import threading
 import time
+import sublime
 from concurrent.futures import ThreadPoolExecutor
 
 from .websocket import WebSocketHandler
@@ -143,6 +144,7 @@ class Server(threading.Thread):
                         error_msg = f"Port {port} is in use and no free port available."
                         self.status.update('error', error=error_msg)
                         error(error_msg)
+                        sublime.error_message(f"[LiveServerPlus] {error_msg}\n\nTry choosing a different port or closing other applications using it.")
                         raise OSError(error_msg)
                         
                     info(f"Port {port} is in use. Using free port {free_port}.")
@@ -162,6 +164,10 @@ class Server(threading.Thread):
                             self.sock = None
                         self.settings._ephemeral_port_cache = None
                         error(f"Failed to bind to free port {free_port}: {bind_error}")
+                        sublime.error_message(
+                            "[LiveServerPlus] Could not bind to any port.\n"
+                            "Please adjust the configured port or close programs using the port."
+                        )
                         raise
                 else:
                     # Close socket for any other error
@@ -172,6 +178,10 @@ class Server(threading.Thread):
                             pass
                         self.sock = None
                     error(f"Unexpected error binding to port: {e}")
+                    sublime.error_message(
+                        "[LiveServerPlus] Unexpected error while binding to the port.\n"
+                        f"Details: {e}"
+                    )
                     raise
                     
         self.sock.listen(128)  # Increase backlog for better connection handling

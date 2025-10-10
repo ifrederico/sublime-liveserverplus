@@ -24,9 +24,6 @@ def is_text_file(file_path):
     ext = extract_file_extension(file_path)
     return ext in TEXT_FILE_EXTENSIONS
 
-# Add a cache at module level
-_mime_cache = {}
-
 def get_mime_type(file_path):
     """Get MIME type for file path with caching and cache limit."""
     if not file_path:
