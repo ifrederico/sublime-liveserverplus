@@ -22,11 +22,7 @@ class FileWatcher(threading.Thread):
         self._ignore_patterns = [self._normalize_pattern(p) for p in self.settings.ignorePatterns]
         
         # Set a limit to avoid too many open files
-        try:
-            self._max_directories = int(getattr(self.settings, 'maxWatchedDirs', 50))
-        except (TypeError, ValueError):
-            self._max_directories = 50
-        self._max_directories = max(10, min(self._max_directories, 5000))
+        self._max_directories = getattr(self.settings, 'maxWatchedDirs', 50)
         self._dir_count = 0
         
         # Add debounce tracking to prevent duplicate events
