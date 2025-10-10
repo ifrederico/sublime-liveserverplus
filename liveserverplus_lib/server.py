@@ -142,6 +142,9 @@ class Server(threading.Thread):
                                 self.sock.bind((bind_host, candidate))
                                 fallback_port = candidate
                                 info(f"Port {port} is in use. Using fallback port {candidate}.")
+                                self.settings._ephemeral_port_cache = candidate
+                                ServerSettings._global_ephemeral_port = candidate
+                                port = candidate
                                 break
                             except OSError as bind_error:
                                 if bind_error.errno == errno.EADDRINUSE:
@@ -155,8 +158,6 @@ class Server(threading.Thread):
                                     raise
 
                     if fallback_port is not None:
-                        self.settings._ephemeral_port_cache = fallback_port
-                        port = fallback_port
                         break
 
                     info(f"Port {port} is in use after trying nearby ports, searching for an available port...")
@@ -180,6 +181,7 @@ class Server(threading.Thread):
                         self.sock.bind((bind_host, free_port))
                         info(f"Port {port} is in use. Using available port {free_port}.")
                         self.settings._ephemeral_port_cache = free_port
+                        ServerSettings._global_ephemeral_port = free_port
                         port = free_port
                         break
                     except OSError as bind_error:

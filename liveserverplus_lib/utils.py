@@ -192,16 +192,23 @@ def openInBrowser(url, browser_name=None):
                     info(f"Failed to open {app_name}, falling back to default browser")
                     
         else:
+            if browser_name == 'edge' and system == 'windows':
+                info(f"Opening URL in Microsoft Edge on Windows: {url}")
+                try:
+                    os.startfile(f"microsoft-edge:{url}")  # type: ignore[attr-defined]
+                    return
+                except OSError:
+                    info("Failed to launch Edge via protocol handler, falling back to default")
+
             # Use the existing BROWSER_COMMANDS for other platforms
-            if browser_name in BROWSER_COMMANDS:
-                if system in BROWSER_COMMANDS[browser_name]:
-                    info(f"Opening URL in {browser_name} on {system}: {url}")
-                    try:
-                        browser = webbrowser.get(BROWSER_COMMANDS[browser_name][system])
-                        browser.open(url)
-                        return
-                    except Exception as e:
-                        info(f"Failed to use {browser_name}: {e}")
+            if browser_name in BROWSER_COMMANDS and system in BROWSER_COMMANDS[browser_name]:
+                info(f"Opening URL in {browser_name} on {system}: {url}")
+                try:
+                    browser = webbrowser.get(BROWSER_COMMANDS[browser_name][system])
+                    browser.open(url)
+                    return
+                except Exception as e:
+                    info(f"Failed to use {browser_name}: {e}")
 
         # Fallback to default browser
         info(f"Browser '{browser_name}' not available, using default")

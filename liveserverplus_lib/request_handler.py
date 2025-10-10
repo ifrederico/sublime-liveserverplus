@@ -3,6 +3,7 @@
 import os
 import socket
 import threading
+import sublime
 
 from .http_utils import HTTPRequest, HTTPResponse, send_error_response, send_options_response
 from .file_server import FileServer
@@ -25,6 +26,7 @@ class RequestHandler:
         self.websocket = server.websocket
         self.file_server = FileServer(self.settings)
         self.connection_manager = ConnectionManager.getInstance()
+        self._tag_warning_shown = False
         
         # Configure websocket injection behaviour
         if self.settings.useWebExt:
@@ -224,7 +226,28 @@ class RequestHandler:
 
         try:
             html_str = content.decode('utf-8', errors='replace')
-            injected = inject_before_tag(html_str, '</body>', self.websocket.INJECTED_CODE)
+            html_lower = html_str.lower()
+
+            injection_tags = ['</body>', '</head>', '</svg>']
+            selected_tag = None
+            for tag in injection_tags:
+                if tag in html_lower:
+                    selected_tag = tag
+                    break
+
+            if selected_tag:
+                injected = inject_before_tag(html_str, selected_tag, self.websocket.INJECTED_CODE)
+            else:
+                injected = html_str + self.websocket.INJECTED_CODE
+                if not self.settings.suppressTagWarnings and not self._tag_warning_shown:
+                    self._tag_warning_shown = True
+                    message = (
+                        "Live reload script could not be injected because no </head>, </body>, or </svg> tag was found.\n"
+                        "The script was appended at the end of the file.\n\n"
+                        "Add the missing tag or set 'donotVerifyTags': true in LiveServerPlus settings to suppress this warning."
+                    )
+                    sublime.set_timeout(lambda: sublime.message_dialog(f"[LiveServerPlus]\n{message}"), 0)
+
             return injected.encode('utf-8')
         except:
             # If anything fails, return content unchanged
