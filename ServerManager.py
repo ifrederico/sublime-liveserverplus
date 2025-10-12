@@ -99,7 +99,7 @@ class ServerManager:
             info("Cannot open browser - server not running")
             return False
 
-        if server.settings.noBrowser:
+        if not server.settings.openBrowser:
             return False
 
         protocol = 'http'

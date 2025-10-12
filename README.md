@@ -90,8 +90,9 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 // LiveServerPlus.sublime-settings (user)
 {
     "customBrowser": "",
-    "donotShowInfoMsg": false,
-    "donotVerifyTags": false,
+    "openBrowser": true,
+    "showInfoMessages": true,
+    "verifyTags": true,
     "fullReload": false,
     "liveReload": false,
     "host": "127.0.0.1",
@@ -100,7 +101,6 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
     "maxWatchedDirs": 50,
     "ignoreFiles": ["**/node_modules/**", "**/.git/**", "**/__pycache__/**"],
     "logging": false,
-    "noBrowser": false,
     "port": 5500,
     "showOnStatusbar": true,
     "useLocalIp": false,

@@ -5,7 +5,7 @@ Core classes and utilities for running a development server in Sublime Text.
 """
 
 # Version information
-__version__ = '3.3.2'
+__version__ = '4.0.0'
 
 # Define public API
 __all__ = [

@@ -13,14 +13,14 @@
     // Browser to launch on start ("chrome", "firefox", "edge"). Leave empty for default.
     "customBrowser": "",
 
-    // Prevent automatically opening a browser when the server starts.
-    "noBrowser": false,
+    // Automatically open a browser when the server starts.
+    "openBrowser": true,
 
-    // Suppress informational status messages in Sublime's status bar.
-    "donotShowInfoMsg": false,
+    // Show informational status messages in Sublime's status bar.
+    "showInfoMessages": true,
 
-    // Hide HTML tag verification warnings that appear when injection fails.
-    "donotVerifyTags": false,
+    // Verify HTML tags and warn when live reload injection fails.
+    "verifyTags": true,
 
     // Use the machine's LAN IP instead of localhost when possible.
     // WARNING: Setting "host" to "0.0.0.0" exposes the server to your local network.

@@ -207,8 +207,8 @@ TEXT_FILE_EXTENSIONS = {
 # Default server settings (public export for tooling compatibility)
 DEFAULT_SETTINGS = {
     'customBrowser': '',
-    'donotShowInfoMsg': False,
-    'donotVerifyTags': False,
+    'showInfoMessages': True,
+    'verifyTags': True,
     'fullReload': False,
     'host': '127.0.0.1',
     'ignoreFiles': [
@@ -216,7 +216,7 @@ DEFAULT_SETTINGS = {
         '**/.git/**',
         '**/__pycache__/**'
     ],
-    'noBrowser': False,
+    'openBrowser': True,
     'port': 5500,
     'showOnStatusbar': True,
     'useLocalIp': False,

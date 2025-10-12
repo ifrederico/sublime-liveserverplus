@@ -47,9 +47,9 @@ def _info_messages_enabled():
     manager = ServerManager.getInstance()
     server = manager.getServer()
     if server:
-        return not server.settings.suppressInfoMessages
+        return server.settings.showInfoMessages
     settings = sublime.load_settings("LiveServerPlus.sublime-settings")
-    return not settings.get('donotShowInfoMsg', False)
+    return bool(settings.get('showInfoMessages', True))
 
 
 def _status_message(message):
@@ -246,7 +246,7 @@ class LiveServerStartCommand(sublime_plugin.WindowCommand):
         manager = ServerManager.getInstance()
         if manager.start(folders):
             server = manager.getServer()
-            if server and not server.settings.noBrowser:
+            if server and server.settings.openBrowser:
                 # Prepare desired path
                 target_path = "/"
                 view = self.window.active_view()
@@ -290,8 +290,7 @@ class LiveServerStopCommand(sublime_plugin.WindowCommand):
             _status_message("Live Server is not running")
             return
             
-        if manager.stop():
-            _status_message("Live Server stopped")
+        manager.stop()
             
     def is_enabled(self):
         return ServerManager.getInstance().isRunning()

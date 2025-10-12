@@ -20,8 +20,8 @@ DEFAULT_ALLOWED_FILE_TYPES = [
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
     'customBrowser': '',
-    'donotShowInfoMsg': False,
-    'donotVerifyTags': False,
+    'showInfoMessages': True,
+    'verifyTags': True,
     'fullReload': False,
     'liveReload': False,
     'host': '127.0.0.1',
@@ -35,7 +35,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
         '.svn', '.hg', '.sass-cache', '.pytest_cache'
     ],
     'logging': False,
-    'noBrowser': False,
+    'openBrowser': True,
     'port': 5500,
     'showOnStatusbar': True,
     'useLocalIp': False,
@@ -179,8 +179,8 @@ class ServerSettings:
         return str(self._config.get('customBrowser') or '').strip()
 
     @property
-    def noBrowser(self) -> bool:
-        return bool(self._config.get('noBrowser', DEFAULT_SETTINGS['noBrowser']))
+    def openBrowser(self) -> bool:
+        return bool(self._config.get('openBrowser', DEFAULT_SETTINGS['openBrowser']))
 
     @property
     def useLocalIp(self) -> bool:
@@ -195,12 +195,12 @@ class ServerSettings:
         return bool(self._config.get('showOnStatusbar', DEFAULT_SETTINGS['showOnStatusbar']))
 
     @property
-    def suppressInfoMessages(self) -> bool:
-        return bool(self._config.get('donotShowInfoMsg', DEFAULT_SETTINGS['donotShowInfoMsg']))
+    def showInfoMessages(self) -> bool:
+        return bool(self._config.get('showInfoMessages', DEFAULT_SETTINGS['showInfoMessages']))
 
     @property
-    def suppressTagWarnings(self) -> bool:
-        return bool(self._config.get('donotVerifyTags', DEFAULT_SETTINGS['donotVerifyTags']))
+    def verifyTags(self) -> bool:
+        return bool(self._config.get('verifyTags', DEFAULT_SETTINGS['verifyTags']))
 
     # ------------------------------------------------------------------
     # Internal server tuning defaults

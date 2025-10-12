@@ -239,12 +239,12 @@ class RequestHandler:
                 injected = inject_before_tag(html_str, selected_tag, self.websocket.INJECTED_CODE)
             else:
                 injected = html_str + self.websocket.INJECTED_CODE
-                if not self.settings.suppressTagWarnings and not self._tag_warning_shown:
+                if self.settings.verifyTags and not self._tag_warning_shown:
                     self._tag_warning_shown = True
                     message = (
                         "Live reload script could not be injected because no </head>, </body>, or </svg> tag was found.\n"
                         "The script was appended at the end of the file.\n\n"
-                        "Add the missing tag or set 'donotVerifyTags': true in LiveServerPlus settings to suppress this warning."
+                        "Add the missing tag or set 'verifyTags': false in LiveServerPlus settings to suppress this warning."
                     )
                     sublime.set_timeout(lambda: sublime.message_dialog(f"[LiveServerPlus]\n{message}"), 0)
 
