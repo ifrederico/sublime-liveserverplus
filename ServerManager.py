@@ -1,11 +1,12 @@
 # ServerManager.py
+import os
 import sublime
 import threading
-import os
 from .liveserverplus_lib.server import Server
 from .liveserverplus_lib.utils import openInBrowser
 from .liveserverplus_lib.logging import info, error
 from .liveserverplus_lib.qr_utils import get_local_ip
+from .liveserverplus_lib.path_utils import build_base_url, join_base_and_path
 
 class ServerManager:
     """Manages the lifecycle of LiveServerPlus server instances"""
@@ -118,15 +119,11 @@ class ServerManager:
 
         port = status_port or server.settings.port
         browser = browser or server.settings.customBrowser
-        
-        # Ensure path starts with / but doesn't have double //
-        if url_path and not url_path.startswith('/'):
-            url_path = f"/{url_path}"
-            
-        if not url_path.startswith('/'):
-            url_path = '/' + url_path if url_path else '/'
 
-        url = f"{protocol}://{host}:{port}{url_path}"
+        base_url = build_base_url(protocol, host, port)
+
+        url = join_base_and_path(base_url, url_path)
+
         info(f"Opening URL in browser: {url}")
         openInBrowser(url, browser)
         return True

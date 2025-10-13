@@ -20,6 +20,7 @@ class ServerStatus:
             'running': '[Ø:{}]',
             'stopping': 'Stopping server',
             'stopped': '[X] Server stopped',
+            'restarting': 'Restarting server',
             'error': '[!] Server error: {}'
         }
         self._current_status: Optional[str] = None

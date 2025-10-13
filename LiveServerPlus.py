@@ -1,9 +1,9 @@
 # LiveServerPlus.py
-import sublime
-import sublime_plugin
 import os
 import sys
 import time
+import sublime
+import sublime_plugin
 from pathlib import PurePosixPath
 
 # Ignore fsevents
@@ -17,8 +17,8 @@ if VENDOR_PATH not in sys.path:
     sys.path.insert(0, VENDOR_PATH)
 
 # Now the imports will work
-from .liveserverplus_lib.utils import openInBrowser
 from .liveserverplus_lib.logging import info, error
+from .liveserverplus_lib.path_utils import normalize_url_path, join_base_and_path
 from .ServerManager import ServerManager
 
 from .liveserverplus_lib.qr_utils import (get_server_urls, generate_qr_code_base64, HAS_QR_SUPPORT, get_local_ip)
@@ -118,10 +118,7 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
             
             # If we found a relative path, append it to the URL
             if rel_path:
-                # Convert to URL format (forward slashes)
-                url_path = rel_path.replace(os.sep, '/')
-                base = primary_url.rstrip('/')
-                primary_url = f"{base}/{url_path.lstrip('/')}"
+                primary_url = join_base_and_path(primary_url, rel_path)
         
         # Generate PNG QR code
         qr_base64 = generate_qr_code_base64(primary_url)
@@ -255,7 +252,7 @@ class LiveServerStartCommand(sublime_plugin.WindowCommand):
                     for folder in folders:
                         if file_path.startswith(folder):
                             rel_path = os.path.relpath(file_path, folder)
-                            target_path = rel_path.replace(os.sep, '/')
+                            target_path = normalize_url_path(rel_path) or '/'
                             break
 
                 def open_when_ready(path, attempt=0):
@@ -329,14 +326,15 @@ class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
             rel_path = os.path.basename(file_path)
         
         # Replace backslashes with forward slashes for URL path
-        url_path = rel_path.replace(os.sep, '/')
+        url_path = normalize_url_path(rel_path)
         
         # For unsupported files, show the directory instead
         if not manager.isFileAllowed(file_path):
-            dir_path = os.path.dirname(url_path)
+            dir_rel = os.path.dirname(rel_path) if rel_path else ''
+            dir_path = normalize_url_path(dir_rel, is_directory=True) if dir_rel else '/'
             manager.openInBrowser(dir_path)
         else:
-            manager.openInBrowser(url_path)
+            manager.openInBrowser(url_path or '/')
         
     def is_enabled(self):
         manager = ServerManager.getInstance()
@@ -414,21 +412,34 @@ class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
             _status_message(f"Live reload {status}")
             return
 
-        manager = ServerManager.getInstance()
-        if manager.isRunning():
-            folders = manager.getServer().folders
-            manager.stop()
-            def restart():
-                settings.set("liveReload", new_state)
-                sublime.save_settings("LiveServerPlus.sublime-settings")
-                manager.start(folders)
-            sublime.set_timeout(restart, 300)
-        else:
-            settings.set("liveReload", new_state)
-            sublime.save_settings("LiveServerPlus.sublime-settings")
+        settings.set("liveReload", new_state)
+        sublime.save_settings("LiveServerPlus.sublime-settings")
 
+        manager = ServerManager.getInstance()
         status = "enabled" if new_state else "disabled"
-        _status_message(f"Live reload {status}")
+
+        if manager.isRunning():
+            server = manager.getServer()
+            folders = list(server.folders) if server else []
+            target_path = self._resolve_current_url_path(manager, server) if server else '/'
+
+            if server and hasattr(server, 'status'):
+                server.status.update('restarting')
+
+            manager.stop()
+
+            def restart():
+                if manager.start(folders):
+                    _status_message(f"Live reload {status}")
+                    new_server = manager.getServer()
+                    if target_path and new_server and new_server.settings.openBrowser:
+                        sublime.set_timeout(lambda: manager.openInBrowser(target_path), 200)
+                else:
+                    sublime.error_message("[LiveServerPlus] Failed to restart server after toggling live reload.")
+
+            sublime.set_timeout(restart, 600)
+        else:
+            _status_message(f"Live reload {status}")
 
     def _is_web_file(self, view):
         if not view or not view.file_name():
@@ -449,6 +460,27 @@ class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
 
     def description(self, value=True):
         return "Enable Live Reload" if value else "Disable Live Reload"
+
+    def _resolve_current_url_path(self, manager, server):
+        view = self.window.active_view()
+        if not view or not view.file_name():
+            return '/'
+
+        file_path = view.file_name()
+        rel_path = None
+        for folder in getattr(server, 'folders', []):
+            if file_path.startswith(folder):
+                rel_path = os.path.relpath(file_path, folder)
+                break
+
+        if not rel_path:
+            return '/'
+
+        if not manager.isFileAllowed(file_path):
+            dir_rel = os.path.dirname(rel_path)
+            return normalize_url_path(dir_rel, is_directory=True) if dir_rel else '/'
+
+        return normalize_url_path(rel_path) or '/'
 
 
 class LiveServerPlusListener(sublime_plugin.EventListener):

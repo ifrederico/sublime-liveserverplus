@@ -1,6 +1,7 @@
 # liveserverplus_lib/file_server.py
 """File serving utilities"""
 import os
+from urllib.parse import unquote
 from .utils import (compressData, detectEncoding, createFileReader, 
                    streamCompressData, shouldSkipCompression)
 from .path_utils import validate_and_secure_path
@@ -30,7 +31,7 @@ class FileServer:
                 if os.path.isfile(index_path):
                     return self._serveFile(conn, index_path, 'index.html', folder)
             
-        rel_path = path.lstrip('/')
+        rel_path = unquote(path.lstrip('/'))
         
         # Try to find and serve the file
         for folder in folders:
@@ -69,9 +70,11 @@ class FileServer:
         """Serve a single file with appropriate handling"""
         if getattr(self.settings, 'logging', False):
             info(f"Serving file: {full_path}")
-        # Use comprehensive path validation
-        if not validate_and_secure_path(base_folder, rel_path):
+        # Use comprehensive path validation and retrieve sanitized path
+        safe_path = validate_and_secure_path(base_folder, rel_path)
+        if not safe_path:
             return self._sendForbidden(conn)
+        full_path = safe_path
             
         # Check if file is allowed using centralized function with optimized set
         is_allowed = isFileAllowed(full_path, self.settings.allowedFileTypesSet)

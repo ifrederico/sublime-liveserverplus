@@ -4,6 +4,7 @@ import socket
 import io
 import base64
 from .logging import info, error
+from .path_utils import build_base_url
 
 # Import vendored libraries
 try:
@@ -117,13 +118,13 @@ def get_server_urls(host, port, protocol='http', prefer_local_ip=True):
 
     if prefer_local_ip and host in ['localhost', '127.0.0.1', '0.0.0.0']:
         local_ip = get_local_ip()
-        primary_url = f"{scheme}://{local_ip}:{port}"
+        primary_url = build_base_url(scheme, local_ip, port).rstrip('/')
         urls.append(primary_url)
-        urls.append(f"{scheme}://localhost:{port}")
+        urls.append(build_base_url(scheme, 'localhost', port).rstrip('/'))
         if local_ip != "127.0.0.1":
-            urls.append(f"{scheme}://127.0.0.1:{port}")
+            urls.append(build_base_url(scheme, '127.0.0.1', port).rstrip('/'))
     else:
-        primary_url = f"{scheme}://{host}:{port}"
+        primary_url = build_base_url(scheme, host, port).rstrip('/')
         urls.append(primary_url)
 
     return {

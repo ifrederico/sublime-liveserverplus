@@ -2,7 +2,8 @@
 """Centralized path manipulation utilities for security and consistency"""
 import os
 import pathlib
-from urllib.parse import unquote
+from pathlib import PurePath, PureWindowsPath
+from urllib.parse import unquote, urljoin, urlunsplit, quote
 from .logging import info, error
 
 
@@ -80,3 +81,94 @@ def get_relative_path(root_path, file_path):
     except ValueError as e:
         error(f"Error computing relative path: {e}")
         return None
+
+
+def normalize_url_path(rel_path, *, is_directory=False):
+    """
+    Convert a filesystem path to a URL-friendly POSIX path.
+
+    Args:
+        rel_path (str | pathlib.PurePath | None): Relative path to normalize.
+        is_directory (bool): Append trailing slash when path points to directory.
+
+    Returns:
+        str: POSIX-style URL path without a leading slash.
+    """
+    if not rel_path:
+        return ''
+
+    # Handle pathlib objects transparently
+    rel_path_str = str(rel_path)
+
+    if '\\' in rel_path_str:
+        # Interpret Windows-style separators explicitly
+        posix_path = PureWindowsPath(rel_path_str).as_posix()
+    else:
+        posix_path = PurePath(rel_path_str).as_posix()
+
+    posix_path = posix_path.lstrip('/')
+
+    if is_directory and posix_path and not posix_path.endswith('/'):
+        posix_path = f"{posix_path}/"
+
+    return posix_path
+
+
+def build_base_url(protocol, host, port):
+    """
+    Build a base server URL (ending with a /) from components.
+
+    Args:
+        protocol (str): URL scheme to use (defaults to http when falsy).
+        host (str): Hostname or IP address.
+        port (int | None): TCP port number.
+
+    Returns:
+        str: Normalized base URL suitable for urljoin.
+    """
+    scheme = protocol or 'http'
+    safe_host = host or '127.0.0.1'
+
+    # Wrap IPv6 addresses in brackets per RFC 3986
+    if ':' in safe_host and not safe_host.startswith('['):
+        safe_host = f"[{safe_host}]"
+
+    if port is not None:
+        netloc = f"{safe_host}:{port}"
+    else:
+        netloc = safe_host
+
+    return urlunsplit((scheme, netloc, '/', '', ''))
+
+
+def join_base_and_path(base_url, rel_path):
+    """
+    Join a base server URL with a normalized relative path.
+
+    Args:
+        base_url (str): Base URL produced by build_base_url.
+        rel_path (str | pathlib.PurePath | None): Relative path to append.
+
+    Returns:
+        str: Complete URL with normalized separators.
+    """
+    if not base_url:
+        if rel_path in (None, '', '/'):
+            return ''
+        return normalize_url_path(rel_path)
+
+    if rel_path in (None, '', '/'):
+        return base_url.rstrip('/')
+
+    is_directory = isinstance(rel_path, str) and rel_path.endswith('/')
+    normalized = normalize_url_path(rel_path, is_directory=is_directory)
+
+    if not base_url.endswith('/'):
+        base_url = f"{base_url}/"
+
+    if not normalized:
+        return base_url.rstrip('/')
+
+    encoded_path = quote(normalized, safe='/')
+
+    return urljoin(base_url, encoded_path)
