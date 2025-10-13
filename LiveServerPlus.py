@@ -321,6 +321,18 @@ class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
         if not rel_path:
             folder = os.path.dirname(file_path)
             if folder not in server.folders_set:
+                approved_folders = getattr(server, '_auto_approved_folders', set())
+                if folder not in approved_folders:
+                    confirmed = sublime.ok_cancel_dialog(
+                        f"Add this folder to Live Server?\n\n{folder}",
+                        "Add Folder"
+                    )
+                    if not confirmed:
+                        _status_message("Folder not added; current file remains unavailable.")
+                        return
+                    approved_folders.add(folder)
+                    server._auto_approved_folders = approved_folders
+
                 server.folders.append(folder)
                 server.folders_set.add(folder)
             rel_path = os.path.basename(file_path)
