@@ -552,6 +552,13 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
 
         sublime.set_timeout_async(check_debounce, delay_ms)
 
+    def on_close(self, view):
+        """Clean up debounce state when a view closes."""
+        self._last_change_count.pop(view.id(), None)
+        file_path = view.file_name()
+        if file_path:
+            _last_modified.pop(file_path, None)
+
 class LiveServerContextProvider(sublime_plugin.EventListener):
     """Provides context for key bindings"""
     
