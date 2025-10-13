@@ -8,7 +8,7 @@ import time
 from string import Template
 from .logging import info, error
 from .constants import FILE_ICONS, DEFAULT_FILE_ICON, DIRECTORY_ICON
-from .text_utils import format_file_size, extract_file_extension
+from .text_utils import format_file_size, extract_file_extension, escape_html
 from .file_utils import isFileAllowed
 
 
@@ -115,12 +115,17 @@ class DirectoryListing:
 
     def _generate_item_html(self, item: Dict[str, Any]) -> str:
         """Generate HTML row for a directory listing entry."""
+        icon = escape_html(item['icon'])
+        url = escape_html(item['url'])
+        name = escape_html(item['name'])
+        size = escape_html(str(item['size']))
+        modified = escape_html(str(item['modified']))
         return f'''
             <tr>
-                <td><span class="icon">{item['icon']}</span></td>
-                <td><a href="{item['url']}">{item['name']}</a></td>
-                <td class="size">{item['size']}</td>
-                <td class="modified">{item['modified']}</td>
+                <td><span class="icon">{icon}</span></td>
+                <td><a href="{url}">{name}</a></td>
+                <td class="size">{size}</td>
+                <td class="modified">{modified}</td>
             </tr>
         '''
 
@@ -152,12 +157,12 @@ class DirectoryListing:
             if url_path != '/':
                 parent = os.path.dirname(url_path.rstrip('/'))
                 parent_path = parent or "/"
-                parent_link = f'''
-                    <a href="{parent_path}" class="parent-link">
-                        <span class="icon">{DIRECTORY_ICON}</span>
-                        Parent Directory
-                    </a>
-                '''
+                parent_link = (
+                    f'<a href="{escape_html(parent_path)}" class="parent-link">'
+                    f'<span class="icon">{escape_html(DIRECTORY_ICON)}</span>'
+                    'Parent Directory'
+                    '</a>'
+                )
 
             # Generate items HTML
             items_html = ''.join(self._generate_item_html(item) for item in items)
@@ -165,7 +170,7 @@ class DirectoryListing:
             # Simple template substitution
             template = Template(self.template)
             html = template.safe_substitute(
-                path=url_path,
+                path=escape_html(url_path),
                 parent_link=parent_link,
                 items=items_html
             )
