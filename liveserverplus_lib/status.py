@@ -97,8 +97,16 @@ class ServerStatus:
         window = sublime.active_window()
         if not window:
             return
-        for view in window.views():
-            view.set_status(self.STATUS_KEY, message)
+        
+        views = window.views()
+        
+        if not views:
+            # No views open - use window-level persistent status
+            sublime.status_message(message)
+        else:
+            # Set on all open views (per-view status)
+            for view in views:
+                view.set_status(self.STATUS_KEY, message)
 
     def _clear_view_status(self) -> None:
         window = sublime.active_window()

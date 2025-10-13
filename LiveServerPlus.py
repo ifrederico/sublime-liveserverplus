@@ -341,12 +341,16 @@ class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
         url_path = normalize_url_path(rel_path)
         
         # For unsupported files, show the directory instead
-        if not manager.isFileAllowed(file_path):
+        url_to_open = '/'
+        if manager.isFileAllowed(file_path):
+            url_to_open = url_path or '/'
+        else:
             dir_rel = os.path.dirname(rel_path) if rel_path else ''
             dir_path = normalize_url_path(dir_rel, is_directory=True) if dir_rel else '/'
-            manager.openInBrowser(dir_path)
-        else:
-            manager.openInBrowser(url_path or '/')
+            url_to_open = dir_path
+
+        manager.openInBrowser(url_to_open)
+
         
     def is_enabled(self):
         manager = ServerManager.getInstance()
@@ -416,21 +420,14 @@ class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
 
     def run(self, value):
         settings = sublime.load_settings("LiveServerPlus.sublime-settings")
-        current_state = bool(settings.get("liveReload", False))
-        new_state = bool(value)
+        manager = ServerManager.getInstance()
+        server_is_running = manager.isRunning()
 
-        if current_state == new_state:
-            status = "enabled" if new_state else "disabled"
-            _status_message(f"Live reload {status}")
-            return
-
-        settings.set("liveReload", new_state)
+        # Update config immediately
+        settings.set("liveReload", bool(value))
         sublime.save_settings("LiveServerPlus.sublime-settings")
 
-        manager = ServerManager.getInstance()
-        status = "enabled" if new_state else "disabled"
-
-        if manager.isRunning():
+        if server_is_running:
             server = manager.getServer()
             folders = list(server.folders) if server else []
             target_path = self._resolve_current_url_path(manager, server) if server else '/'
@@ -442,36 +439,14 @@ class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
 
             def restart():
                 if manager.start(folders):
-                    _status_message(f"Live reload {status}")
                     new_server = manager.getServer()
-                    if target_path and new_server and new_server.settings.openBrowser:
+                    if (target_path and target_path != '/' and new_server
+                            and new_server.settings.openBrowser):
                         sublime.set_timeout(lambda: manager.openInBrowser(target_path), 200)
                 else:
                     sublime.error_message("[LiveServerPlus] Failed to restart server after toggling live reload.")
 
             sublime.set_timeout(restart, 600)
-        else:
-            _status_message(f"Live reload {status}")
-
-    def _is_web_file(self, view):
-        if not view or not view.file_name():
-            return False
-        ext = os.path.splitext(view.file_name())[1].lower()
-        web_extensions = ['.html', '.htm', '.css', '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte']
-        return ext in web_extensions
-
-    def is_enabled(self, value=True):
-        return self._is_web_file(self.window.active_view())
-
-    def is_visible(self, value=True):
-        if not self._is_web_file(self.window.active_view()):
-            return False
-        settings = sublime.load_settings("LiveServerPlus.sublime-settings")
-        current_state = bool(settings.get("liveReload", False))
-        return bool(value) != current_state
-
-    def description(self, value=True):
-        return "Enable Live Reload" if value else "Disable Live Reload"
 
     def _resolve_current_url_path(self, manager, server):
         view = self.window.active_view()
@@ -493,6 +468,17 @@ class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
             return normalize_url_path(dir_rel, is_directory=True) if dir_rel else '/'
 
         return normalize_url_path(rel_path) or '/'
+
+    def is_enabled(self, value=True):
+        return True
+
+    def is_visible(self, value=True):
+        settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+        current_state = bool(settings.get("liveReload", False))
+        return bool(value) != current_state
+
+    def description(self, value=True):
+        return "Enable Live Reload" if value else "Disable Live Reload"
 
 
 class LiveServerPlusListener(sublime_plugin.EventListener):
