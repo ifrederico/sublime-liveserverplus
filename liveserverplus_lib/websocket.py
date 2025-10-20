@@ -19,6 +19,7 @@ class WebSocketHandler:
         self._lock = threading.Lock()
         self._timer_lock = threading.Lock()
         self._settings_lock = threading.Lock()
+        self._message_handler = None
 
         # Settings reference provided by the server
         self._settings = None
@@ -169,7 +170,17 @@ class WebSocketHandler:
                         except Exception:
                             pass
             info(f"Removed {len(dead_clients)} dead WebSocket clients")
-        
+
+    def broadcast_message(self, message):
+        """Public helper to broadcast arbitrary text messages."""
+        if not isinstance(message, str):
+            try:
+                message = str(message)
+            except Exception:
+                error("WebSocket broadcast_message received non-string payload")
+                return
+        self._broadcast(message)
+
     def _createWebSocketFrame(self, message):
         """Return pre-computed frame if available, otherwise build it."""
         if message == 'reload':
@@ -197,6 +208,107 @@ class WebSocketHandler:
             
         frame.extend(msg_bytes)
         return bytes(frame)  # Return immutable bytes
+
+    def set_message_handler(self, handler):
+        """Register callback for incoming text messages."""
+        self._message_handler = handler
+
+    def _notify_incoming_message(self, message, conn):
+        if not self._message_handler:
+            return
+        try:
+            self._message_handler(message, conn)
+        except Exception as exc:
+            error(f"Error in WebSocket message handler: {exc}")
+
+    def read_message(self, conn):
+        """Read a text frame from the WebSocket connection."""
+        try:
+            header = self._recv_exact(conn, 2)
+            if not header:
+                return None
+
+            fin = header[0] & 0x80
+            opcode = header[0] & 0x0F
+            masked = header[1] & 0x80
+            payload_len = header[1] & 0x7F
+
+            if payload_len == 126:
+                extended = self._recv_exact(conn, 2)
+                if not extended:
+                    return None
+                payload_len = struct.unpack('>H', extended)[0]
+            elif payload_len == 127:
+                extended = self._recv_exact(conn, 8)
+                if not extended:
+                    return None
+                payload_len = struct.unpack('>Q', extended)[0]
+
+            mask = b''
+            if masked:
+                mask = self._recv_exact(conn, 4)
+                if not mask:
+                    return None
+
+            payload = self._recv_exact(conn, payload_len) if payload_len else b''
+            if payload is None:
+                return None
+
+            if masked and payload:
+                payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+
+            if opcode == 0x8:  # Close
+                return None
+            if opcode == 0x9:  # Ping -> respond with pong
+                try:
+                    conn.send(self._build_pong_frame(payload))
+                except Exception:
+                    pass
+                return ''
+            if opcode == 0xA:  # Pong
+                return ''
+            if opcode != 0x1:  # Only handle text frames
+                return ''
+
+            try:
+                return payload.decode('utf-8', errors='ignore')
+            except Exception:
+                return ''
+
+        except socket.timeout:
+            return ''
+        except (socket.error, OSError):
+            return None
+
+    def _recv_exact(self, conn, num_bytes):
+        """Receive exactly num_bytes or return None if connection closed."""
+        if num_bytes == 0:
+            return b''
+        chunks = []
+        bytes_recd = 0
+        while bytes_recd < num_bytes:
+            chunk = conn.recv(num_bytes - bytes_recd)
+            if not chunk:
+                return None
+            chunks.append(chunk)
+            bytes_recd += len(chunk)
+        return b''.join(chunks)
+
+    def _build_pong_frame(self, payload):
+        """Build a pong frame in response to ping."""
+        frame = bytearray()
+        frame.append(0x8A)  # FIN + opcode for pong
+        length = len(payload)
+        if length <= 125:
+            frame.append(length)
+        elif length <= 65535:
+            frame.append(126)
+            frame.extend(struct.pack('>H', length))
+        else:
+            frame.append(127)
+            frame.extend(struct.pack('>Q', length))
+        frame.extend(payload)
+        return bytes(frame)
 
     def shutdown(self):
         with self._timer_lock:

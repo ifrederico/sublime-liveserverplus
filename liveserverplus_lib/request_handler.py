@@ -129,15 +129,12 @@ class RequestHandler:
         """Keep WebSocket connection alive"""
         try:
             while not self.server._stop_flag:
-                try:
-                    data = conn.recv(1024)
-                    if not data:
-                        break
-                    # Could handle WebSocket frames here if needed
-                except socket.timeout:
-                    continue
-                except Exception:
+                message = self.websocket.read_message(conn)
+                if message is None:
                     break
+                if not message:
+                    continue
+                self.websocket._notify_incoming_message(message, conn)
         finally:
             self.websocket.removeClient(conn)
             

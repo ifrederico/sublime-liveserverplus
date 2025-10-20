@@ -1,5 +1,6 @@
 # ServerManager.py
 import os
+import json
 import sublime
 import threading
 from .liveserverplus_lib.server import Server
@@ -25,6 +26,7 @@ class ServerManager:
     def __init__(self):
         self.server = None
         self.restart_pending = False
+        self._scroll_listeners = []
         info("ServerManager initialized")
     
     def isRunning(self):
@@ -41,6 +43,8 @@ class ServerManager:
             try:
                 info(f"Starting server with folders: {folders}")
                 self.server = Server(folders)
+                if hasattr(self.server, 'websocket'):
+                    self.server.websocket.set_message_handler(self._handle_websocket_message)
                 self.server.start()
                 return True
             except Exception as e:
@@ -146,3 +150,42 @@ class ServerManager:
             server.onFileChange(file_path)
             return True
         return False
+
+    def broadcastMessage(self, message):
+        """Broadcast a custom message to all connected clients."""
+        server = self.getServer()
+        if not server:
+            return False
+        server.broadcast_message(message)
+        return True
+
+    def registerScrollSyncListener(self, callback):
+        """Register callback for incoming markdown scroll events."""
+        with self._lock:
+            if callback not in self._scroll_listeners:
+                self._scroll_listeners.append(callback)
+
+    def _handle_websocket_message(self, message, conn):
+        if not message:
+            return
+
+        try:
+            payload = json.loads(message)
+        except Exception:
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        if payload.get('type') != 'markdown-scroll':
+            return
+
+        listeners_snapshot = []
+        with self._lock:
+            listeners_snapshot = list(self._scroll_listeners)
+
+        for listener in listeners_snapshot:
+            try:
+                listener(payload)
+            except Exception as exc:
+                error(f"Scroll sync listener error: {exc}")

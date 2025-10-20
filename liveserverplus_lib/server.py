@@ -67,6 +67,14 @@ class Server(threading.Thread):
             error(traceback.format_exc())
             self.status.update('error', error=str(e))
 
+    def broadcast_message(self, message):
+        """Send a custom message to all connected WebSocket clients."""
+        try:
+            if self.websocket:
+                self.websocket.broadcast_message(message)
+        except Exception as exc:
+            error(f"Failed to broadcast message: {exc}")
+
     def _setupSocket(self):
         """Set up the server socket with error handling"""
         import errno

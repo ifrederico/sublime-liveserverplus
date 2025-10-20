@@ -64,5 +64,15 @@
     "logging": false,
 
     // Show server status text in Sublime's status bar.
-    "showOnStatusbar": true
+    "showOnStatusbar": true,
+
+    // ==========================================
+    // Markdown Preview
+    // ==========================================
+
+    // Render Markdown files as GitHub-style HTML previews.
+    "renderMarkdownPreview": true,
+
+    // Control Markdown scroll sync: "editor" (default), "sync", or false to disable.
+    "markdownScrollSync": "editor"
 }

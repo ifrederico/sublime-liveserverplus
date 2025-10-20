@@ -64,10 +64,11 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 
 ## Features
 
-- **Instant reload** on file changes; optional CSS‑only injection. Enable Sublime-only mode when you want immediate reloads on save, or leave it disabled to monitor external tools via Watchdog.  
+- **Instant reload** on file changes; optional CSS-only injection. Enable Sublime-only mode when you want immediate reloads on save, or leave it disabled to monitor external tools via Watchdog.  
+- **GitHub-style Markdown preview** with live scroll sync—defaults to editor→browser, switch to "sync" for two-way or `false` to disable.  
 - **Mobile preview**: scan a QR code to open the site on any device.  
 - **Port selection**: choose a port at startup or set `"port": 0` for a free one.  
-- **Two watcher modes**: Sublime on‑save events (fast) or Watchdog polling (external changes). 
+- **Automatic watcher fallback**: native watchers for performance, seamless polling fallback when macOS hits the file-descriptor limit.  
 - **Runs in Sublime’s bundled Python**—no external runtime required.
 
 ---
@@ -99,6 +100,8 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
     // WARNING: use "0.0.0.0" only on trusted networks; it exposes the server to your LAN.
     "maxThreads": 64,
     "maxWatchedDirs": 50,
+    "renderMarkdownPreview": true,
+    "markdownScrollSync": "editor", // "editor", "sync", or false
     "ignoreFiles": ["**/node_modules/**", "**/.git/**", "**/__pycache__/**"],
     "logging": false,
     "port": 5500,

@@ -5,11 +5,11 @@ from urllib.parse import unquote
 from .utils import (compressData, detectEncoding, createFileReader, 
                    streamCompressData, shouldSkipCompression)
 from .path_utils import validate_and_secure_path
-from .file_utils import (get_mime_type, isFileAllowed, is_text_file, 
-                        extract_file_extension, should_compress_file)
+from .file_utils import (get_mime_type, isFileAllowed, should_compress_file)
 from .http_utils import (HTTPResponse, create_file_response, create_error_response)
 from .logging import info, error
 from .constants import STREAMING_THRESHOLD, LARGE_FILE_THRESHOLD
+from .markdown_renderer import MarkdownRenderer, guess_markdown_title
 
 
 class FileServer:
@@ -18,6 +18,7 @@ class FileServer:
     def __init__(self, settings):
         self.settings = settings
         self.websocket_injector = None  # Will be set by RequestHandler
+        self.markdown_renderer = MarkdownRenderer()
         
     def serveFile(self, conn, path, folders):
         """
@@ -65,6 +66,47 @@ class FileServer:
         except Exception as e:
             error(f"Error serving directory: {e}")
             return False
+
+    def _serveMarkdown(self, conn, file_path):
+        """Render and serve Markdown documents as HTML."""
+        if getattr(self.settings, 'logging', False):
+            info(f"Rendering Markdown preview: {file_path}")
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as handle:
+                markdown_source = handle.read()
+        except UnicodeDecodeError:
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='replace') as handle:
+                    markdown_source = handle.read()
+            except OSError as exc:
+                error(f"Error reading markdown file {file_path}: {exc}")
+                return False
+        except OSError as exc:
+            error(f"Error reading markdown file {file_path}: {exc}")
+            return False
+
+        title = guess_markdown_title(file_path, markdown_source)
+
+        try:
+            scroll_mode = getattr(self.settings, 'markdownScrollSyncMode', 'editor')
+            html_doc = self.markdown_renderer.render(markdown_source, title=title, scroll_mode=scroll_mode)
+        except Exception as exc:
+            error(f"Markdown rendering failed for {file_path}: {exc}")
+            return False
+
+        html_bytes = html_doc.encode('utf-8')
+
+        if self.websocket_injector:
+            html_bytes = self.websocket_injector(html_bytes)
+
+        response = create_file_response(
+            content=html_bytes,
+            mime_type='text/html; charset=utf-8',
+            enable_cors=self.settings.corsEnabled
+        )
+
+        return response.send(conn)
             
     def _serveFile(self, conn, full_path, rel_path, base_folder):
         """Serve a single file with appropriate handling"""
@@ -75,6 +117,11 @@ class FileServer:
         if not safe_path:
             return self._sendForbidden(conn)
         full_path = safe_path
+
+        file_ext = os.path.splitext(full_path)[1].lower()
+
+        if file_ext == '.md' and self.settings.renderMarkdownPreview:
+            return self._serveMarkdown(conn, full_path)
             
         # Check if file is allowed using centralized function with optimized set
         is_allowed = isFileAllowed(full_path, self.settings.allowedFileTypesSet)

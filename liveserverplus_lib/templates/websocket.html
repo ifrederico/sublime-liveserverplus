@@ -23,6 +23,115 @@
                 });
             }
 
+            const bodyDataset = document.body && document.body.dataset ? document.body.dataset : {};
+            const isMarkdownPreview = !!(bodyDataset && bodyDataset.lspMarkdownPreview === 'true');
+            const scrollMode = (bodyDataset && bodyDataset.lspScrollMode) ? bodyDataset.lspScrollMode.toLowerCase() : 'off';
+            let pendingScrollTimeout = null;
+            let suppressOutgoing = false;
+            let lastSentScroll = 0;
+            const SCROLL_SEND_INTERVAL = 80;
+
+            function applyScrollSync(ratio) {
+                if (!isMarkdownPreview || scrollMode === 'off') {
+                    return;
+                }
+
+                const clamped = Math.max(0, Math.min(1, ratio));
+                const scrollingElement = document.scrollingElement || document.documentElement || document.body;
+                if (!scrollingElement) {
+                    return;
+                }
+
+                const maxScroll = Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
+                const target = maxScroll * clamped;
+
+                suppressOutgoing = true;
+
+                if (typeof window.scrollTo === 'function') {
+                    window.scrollTo({ top: target, behavior: 'auto' });
+                } else {
+                    scrollingElement.scrollTop = target;
+                }
+
+                setTimeout(function() {
+                    suppressOutgoing = false;
+                }, 120);
+            }
+
+            function handleCustomMessage(raw) {
+                if (!raw || scrollMode === 'off') {
+                    return;
+                }
+
+                let payload;
+                try {
+                    payload = JSON.parse(raw);
+                } catch (err) {
+                    return;
+                }
+
+                if (!payload || payload.type !== 'markdown-scroll') {
+                    return;
+                }
+
+                if (payload.source && payload.source !== 'editor') {
+                    return;
+                }
+
+                if (payload.path) {
+                    const normalize = (value) => {
+                        if (!value) {
+                            return '/';
+                        }
+                        let normalized = value;
+                        if (!normalized.startsWith('/')) {
+                            normalized = '/' + normalized;
+                        }
+                        if (normalized.length > 1 && normalized.endsWith('/')) {
+                            normalized = normalized.slice(0, -1);
+                        }
+                        return normalized;
+                    };
+
+                    if (normalize(window.location.pathname) !== normalize(payload.path)) {
+                        return;
+                    }
+                }
+
+                const ratio = typeof payload.ratio === 'number' ? payload.ratio : 0;
+                if (pendingScrollTimeout) {
+                    clearTimeout(pendingScrollTimeout);
+                }
+
+                pendingScrollTimeout = setTimeout(function() {
+                    applyScrollSync(ratio);
+                }, 16);
+            }
+
+            function sendScrollUpdate(ratio) {
+                if (!isMarkdownPreview || scrollMode !== 'sync' || !socket || socket.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+                const now = Date.now();
+                if (now - lastSentScroll < SCROLL_SEND_INTERVAL) {
+                    return;
+                }
+                lastSentScroll = now;
+
+                const payload = {
+                    type: 'markdown-scroll',
+                    path: window.location.pathname || '/',
+                    ratio: ratio,
+                    source: 'preview'
+                };
+
+                try {
+                    socket.send(JSON.stringify(payload));
+                } catch (err) {
+                    console.error('Failed to send scroll sync message', err);
+                }
+            }
+
             function connect() {
                 if (socket) {
                     socket.close();
@@ -37,6 +146,8 @@
                     } else if (msg.data === 'refreshcss') {
                         console.log('CSS refresh');
                         refreshCSS();
+                    } else {
+                        handleCustomMessage(msg.data);
                     }
                 };
 
@@ -61,6 +172,23 @@
             }
 
             connect();
+
+            if (isMarkdownPreview && scrollMode === 'sync') {
+                window.addEventListener('scroll', function() {
+                    if (suppressOutgoing) {
+                        return;
+                    }
+
+                    const scrollingElement = document.scrollingElement || document.documentElement || document.body;
+                    if (!scrollingElement) {
+                        return;
+                    }
+
+                    const maxScroll = Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
+                    const ratio = maxScroll > 0 ? scrollingElement.scrollTop / maxScroll : 0;
+                    sendScrollUpdate(Math.max(0, Math.min(1, ratio)));
+                }, { passive: true });
+            }
         })();
     } else {
         console.error('Your browser does not support WebSocket for Live-Reloading.');

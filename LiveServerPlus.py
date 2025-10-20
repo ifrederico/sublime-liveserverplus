@@ -2,6 +2,7 @@
 import os
 import sys
 import time
+import json
 import sublime
 import sublime_plugin
 from pathlib import PurePosixPath
@@ -25,6 +26,34 @@ from .liveserverplus_lib.qr_utils import (get_server_urls, generate_qr_code_base
 
 
 _last_modified = {}
+_SCROLL_SYNC_LISTENERS = {}
+
+
+def _register_scroll_listener(listener):
+    _SCROLL_SYNC_LISTENERS[listener.view.id()] = listener
+
+
+def _unregister_scroll_listener(listener):
+    _SCROLL_SYNC_LISTENERS.pop(listener.view.id(), None)
+
+
+def _dispatch_scroll_sync_message(payload):
+    path = payload.get('path')
+    ratio = payload.get('ratio')
+    source = payload.get('source')
+
+    if path is None or ratio is None:
+        return
+
+    def _invoke():
+        listeners = list(_SCROLL_SYNC_LISTENERS.values())
+        for listener in listeners:
+            try:
+                listener.handle_external_scroll(path, ratio, source)
+            except Exception as exc:
+                error(f"Scroll sync dispatch error: {exc}")
+
+    sublime.set_timeout(_invoke, 0)
 
 def is_server_running():
     """Check if server is currently running - compatibility function"""
@@ -573,11 +602,214 @@ class LiveServerContextProvider(sublime_plugin.EventListener):
                 
         return None
 
+
+class MarkdownScrollSyncListener(sublime_plugin.ViewEventListener):
+    """Continuously sync Markdown editor scroll position with the browser preview."""
+
+    POLL_INTERVAL_MS = 120
+    MIN_RATIO_DELTA = 0.01
+    MIN_SEND_INTERVAL = 0.15
+
+    def __init__(self, view):
+        super().__init__(view)
+        self._polling = True
+        self._last_ratio = None
+        self._last_sent = 0.0
+        self._suppress_outgoing_until = 0.0
+        _register_scroll_listener(self)
+        sublime.set_timeout(self._poll_scroll, self.POLL_INTERVAL_MS)
+
+    @classmethod
+    def is_applicable(cls, settings):
+        syntax = settings.get('syntax') or ''
+        return 'Markdown' in syntax or syntax.endswith('markdown.sublime-syntax')
+
+    def on_close(self):
+        self._polling = False
+        _unregister_scroll_listener(self)
+
+    def _poll_scroll(self):
+        if not self._polling or self.view.window() is None:
+            return
+
+        sublime.set_timeout(self._poll_scroll, self.POLL_INTERVAL_MS)
+
+        if not self._should_sync():
+            return
+
+        server = ServerManager.getInstance().getServer()
+        if not server:
+            return
+
+        mode = getattr(server.settings, 'markdownScrollSyncMode', 'editor')
+        if mode == 'off':
+            return
+
+        rel_path = self._relative_path_for_server(server)
+        if rel_path is None:
+            return
+
+        ratio = self._calculate_ratio()
+        if ratio is None:
+            return
+
+        now = time.time()
+        if now < self._suppress_outgoing_until:
+            return
+
+        if self._last_ratio is not None:
+            if abs(ratio - self._last_ratio) < self.MIN_RATIO_DELTA:
+                return
+            if (now - self._last_sent) < self.MIN_SEND_INTERVAL:
+                return
+
+        self._last_ratio = ratio
+        self._last_sent = now
+
+        url_path = normalize_url_path(rel_path)
+        if url_path:
+            url_path = '/' + url_path
+        else:
+            url_path = '/'
+
+        if mode in ('editor', 'sync'):
+            payload = json.dumps({
+                'type': 'markdown-scroll',
+                'path': url_path,
+                'ratio': ratio,
+                'source': 'editor'
+            }, separators=(',', ':'))
+
+            ServerManager.getInstance().broadcastMessage(payload)
+
+    def _should_sync(self):
+        if self.view.is_loading():
+            return False
+
+        window = self.view.window()
+        if not window or window.active_view() != self.view:
+            return False
+
+        file_name = self.view.file_name() or ''
+        if not file_name.lower().endswith('.md'):
+            return False
+
+        manager = ServerManager.getInstance()
+        if not manager.isRunning():
+            return False
+
+        server = manager.getServer()
+        if not server:
+            return False
+
+        active_window = sublime.active_window()
+        if active_window is None or active_window != self.view.window():
+            return False
+
+        mode = getattr(server.settings, 'markdownScrollSyncMode', 'editor')
+        return mode in ('editor', 'sync')
+
+    def _relative_path_for_server(self, server):
+        file_path = self.view.file_name()
+        if not file_path:
+            return None
+
+        for folder in server.folders:
+            if file_path.startswith(folder):
+                try:
+                    return os.path.relpath(file_path, folder)
+                except ValueError:
+                    return None
+        return None
+
+    def _calculate_ratio(self):
+        try:
+            viewport_y = self.view.viewport_position()[1]
+            layout_height = self.view.layout_extent()[1]
+            viewport_height = self.view.viewport_extent()[1]
+        except Exception:
+            return None
+
+        max_scroll = max(0.0, layout_height - viewport_height)
+        if max_scroll <= 0:
+            return 0.0
+
+        ratio = viewport_y / max_scroll
+        return max(0.0, min(1.0, ratio))
+
+    def _current_url_path(self):
+        server = ServerManager.getInstance().getServer()
+        if not server:
+            return None
+        rel_path = self._relative_path_for_server(server)
+        if rel_path is None:
+            return None
+        normalized = normalize_url_path(rel_path)
+        return '/' + normalized if normalized else '/'
+
+    def handle_external_scroll(self, path, ratio, source):
+        mode = self._current_scroll_mode()
+        if mode != 'sync':
+            return
+
+        if source == 'editor':
+            return
+
+        if source and source != 'preview':
+            return
+
+        local_path = self._current_url_path()
+        if not local_path:
+            return
+
+        def normalize_path(value):
+            if not value:
+                return '/'
+            result = value
+            if not result.startswith('/'):
+                result = '/' + result
+            if len(result) > 1 and result.endswith('/'):
+                result = result[:-1]
+            return result
+
+        if normalize_path(path) != normalize_path(local_path):
+            return
+
+        ratio = max(0.0, min(1.0, float(ratio)))
+
+        def apply():
+            max_scroll = self._max_scroll()
+            if max_scroll is None:
+                return
+            target_y = ratio * max_scroll
+            current_x, _ = self.view.viewport_position()
+            self._suppress_outgoing_until = time.time() + 0.3
+            self._last_ratio = ratio
+            self.view.set_viewport_position((current_x, target_y), False)
+
+        sublime.set_timeout(apply, 0)
+
+    def _max_scroll(self):
+        try:
+            layout_height = self.view.layout_extent()[1]
+            viewport_height = self.view.viewport_extent()[1]
+        except Exception:
+            return None
+        return max(0.0, layout_height - viewport_height)
+
+    def _current_scroll_mode(self):
+        manager = ServerManager.getInstance()
+        server = manager.getServer()
+        if not server:
+            return 'off'
+        return getattr(server.settings, 'markdownScrollSyncMode', 'editor')
+
 def plugin_loaded():
     """Called by Sublime Text when plugin is loaded."""
     info("Plugin loaded")
     # Initialize ServerManager singleton
-    ServerManager.getInstance()
+    manager = ServerManager.getInstance()
+    manager.registerScrollSyncListener(_dispatch_scroll_sync_message)
 
 def plugin_unloaded():
     """Called by Sublime Text when plugin is unloaded."""
@@ -593,6 +825,7 @@ def plugin_unloaded():
         
         # Clear singleton instance to prevent memory leaks
         ServerManager._instance = None
+        _SCROLL_SYNC_LISTENERS.clear()
         info("Plugin unloaded successfully")
     except Exception as e:
         error(f"Error during plugin unload: {e}")

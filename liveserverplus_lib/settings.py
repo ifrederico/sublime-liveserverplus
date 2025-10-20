@@ -43,6 +43,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     'wait': 100,
     'maxThreads': 64,
     'maxWatchedDirs': 50,
+    'renderMarkdownPreview': True,
+    'markdownScrollSync': 'editor',
 }
 
 
@@ -197,6 +199,26 @@ class ServerSettings:
     @property
     def showInfoMessages(self) -> bool:
         return bool(self._config.get('showInfoMessages', DEFAULT_SETTINGS['showInfoMessages']))
+
+    @property
+    def renderMarkdownPreview(self) -> bool:
+        return bool(self._config.get('renderMarkdownPreview', DEFAULT_SETTINGS['renderMarkdownPreview']))
+
+    @property
+    def markdownScrollSyncMode(self) -> str:
+        raw_value = self._config.get('markdownScrollSync', DEFAULT_SETTINGS['markdownScrollSync'])
+
+        if isinstance(raw_value, bool):
+            return 'sync' if raw_value else 'off'
+
+        if isinstance(raw_value, str):
+            normalized = raw_value.strip().lower()
+            if normalized in ('sync', 'editor'):
+                return normalized
+            if normalized in ('false', 'off', 'none', 'disabled'):
+                return 'off'
+
+        return DEFAULT_SETTINGS['markdownScrollSync']
 
     @property
     def verifyTags(self) -> bool:

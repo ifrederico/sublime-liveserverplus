@@ -1,3 +1,4 @@
+import errno
 import os
 import threading
 import time
@@ -5,6 +6,7 @@ from pathlib import PurePosixPath
 
 # Import Watchdog from the vendored location
 from .vendor.watchdog.observers import Observer
+from .vendor.watchdog.observers.polling import PollingObserver
 from .vendor.watchdog.events import FileSystemEventHandler
 from .logging import info, error
 
@@ -17,7 +19,7 @@ class FileWatcher(threading.Thread):
         self.callback = callback
         self.settings = settings
         self._stop_event = threading.Event()
-        self.observer = Observer()
+        self.observer = None
         self.event_handler = WatchdogEventHandler(self)
         self._ignore_patterns = [self._normalize_pattern(p) for p in self.settings.ignorePatterns]
         
@@ -29,9 +31,38 @@ class FileWatcher(threading.Thread):
         self._last_events = {}
         self._debounce_time = 0.5  # seconds
         self._debounce_lock = threading.Lock() 
-        
+        self._using_polling = False
+
         # Set up the observers for the folders
-        self._setup_observers()
+        self._initialize_observer()
+
+    def _initialize_observer(self, force_polling=False):
+        """Instantiate observer and schedule directories, with optional polling fallback."""
+        if self.observer:
+            try:
+                self.observer.stop()
+                self.observer.join(timeout=2)
+            except Exception:
+                pass
+
+        use_polling = force_polling or self._using_polling
+        if use_polling:
+            self.observer = PollingObserver()
+            self._using_polling = True
+            info("Using polling file watcher to avoid resource issues")
+        else:
+            self.observer = Observer()
+
+        self._dir_count = 0
+
+        try:
+            self._setup_observers(self.observer)
+        except OSError as exc:
+            if not use_polling and exc.errno in (errno.EMFILE, errno.ENFILE):
+                info("Too many open files while configuring watchers; switching to polling mode")
+                self._initialize_observer(force_polling=True)
+            else:
+                raise
 
     def _normalize_pattern(self, pattern):
         if not pattern:
@@ -51,11 +82,12 @@ class FileWatcher(threading.Thread):
                 return True
         return False
 
-    def _setup_observers(self):
+    def _setup_observers(self, observer):
         """Set up Watchdog observers for each folder"""
         import os.path
         
         watched_dirs = []
+        too_many_files = False
         
         for folder in self.folders:
             if not os.path.exists(folder):
@@ -69,7 +101,7 @@ class FileWatcher(threading.Thread):
             
             try:
                 # Schedule the root folder for watching
-                self.observer.schedule(
+                observer.schedule(
                     self.event_handler,
                     folder,
                     recursive=False
@@ -94,7 +126,7 @@ class FileWatcher(threading.Thread):
                 remaining_slots = self._max_directories - self._dir_count
                 for web_dir in web_dirs_to_watch[:remaining_slots]:
                     try:
-                        self.observer.schedule(
+                        observer.schedule(
                             self.event_handler,
                             web_dir,
                             recursive=False
@@ -102,19 +134,41 @@ class FileWatcher(threading.Thread):
                         self._dir_count += 1
                         watched_dirs.append(web_dir)
                     except Exception as e:
+                        if isinstance(e, OSError) and e.errno in (errno.EMFILE, errno.ENFILE):
+                            too_many_files = True
+                            info(f"Too many open files while watching {web_dir}; scheduling aborted")
+                            break
                         info(f"Could not watch directory {web_dir}: {e}")
+                if too_many_files:
+                    break
                 
                 if len(web_dirs_to_watch) > remaining_slots:
                     info(f"Only watching {self._max_directories} directories to avoid resource issues")
             except Exception as e:
+                if isinstance(e, OSError) and e.errno in (errno.EMFILE, errno.ENFILE):
+                    too_many_files = True
+                    info(f"Too many open files when adding watcher for {folder}; attempting polling fallback")
+                    break
                 error(f"Error setting up watchdog for {folder}: {e}")
         
         # Print summary of watched directories
         info(f"Watching {len(watched_dirs)} directories for changes")
+
+        if too_many_files and not self._using_polling:
+            raise OSError(errno.EMFILE, "Too many open files")
     
     def run(self):
         """Thread's run method - starts the observer and keeps thread alive"""
-        self.observer.start()
+        try:
+            self.observer.start()
+        except OSError as exc:
+            if exc.errno in (errno.EMFILE, errno.ENFILE) and not self._using_polling:
+                info("Too many open files when starting watcher; switching to polling mode")
+                self._initialize_observer(force_polling=True)
+                self.observer.start()
+            else:
+                error(f"Failed to start file watcher: {exc}")
+                return
         
         # Keep the thread alive until stopped
         while not self._stop_event.is_set():
@@ -143,7 +197,7 @@ class FileWatcher(threading.Thread):
         
         # Use lock to prevent race condition
         with self._debounce_lock:
-        # Clean up old entries to prevent memory leak
+            # Clean up old entries to prevent memory leak
             # Remove entries older than 60 seconds
             self._last_events = {
                 path: timestamp 
@@ -198,27 +252,3 @@ class WatchdogEventHandler(FileSystemEventHandler):
     
     def on_created(self, event):
         """Handle file creation events"""
-        if not self.watcher._stop_event.is_set() and not event.is_directory:
-            if self._should_watch_file(event.src_path):
-                try:
-                    self.watcher.debounced_callback(event.src_path)
-                except Exception as e:
-                    error(f"Error in file creation callback: {e}")
-    
-    def on_deleted(self, event):
-        """Handle file deletion events"""
-        if not self.watcher._stop_event.is_set() and not event.is_directory:
-            if self._should_watch_file(event.src_path):
-                try:
-                    self.watcher.debounced_callback(event.src_path)
-                except Exception as e:
-                    error(f"Error in file deletion callback: {e}")
-    
-    def on_moved(self, event):
-        """Handle file move/rename events"""
-        if not self.watcher._stop_event.is_set() and not event.is_directory:
-            if self._should_watch_file(event.dest_path):
-                try:
-                    self.watcher.debounced_callback(event.dest_path)
-                except Exception as e:
-                    error(f"Error in file move callback: {e}")
