@@ -139,8 +139,9 @@ Contributions welcome! Issues and pull requests are welcome.
 
 ## Vendored dependencies
 
-- **Watchdog 6.0.0** – filesystem events  
-- **PyQRCode** and **pypng** – QR generation  
+- **Watchdog** – filesystem events  
+- **PyQRCode** and **pypng** – QR generation
+- **markdown2** – Markdown → HTML conversion 
 
 All vendored under `liveserverplus_lib/vendor/`.
 
