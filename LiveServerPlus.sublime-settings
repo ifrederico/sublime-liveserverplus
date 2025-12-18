@@ -40,7 +40,8 @@
     // Force full page reloads on every change (disables CSS-only hot reload).
     "fullReload": false,
 
-    // Delay (ms) before WebSocket refresh notifications are sent; acts as debounce.
+    // Debounce delay (ms) for reload events.
+    // Note: when "liveReload" is true, this also controls the auto-save debounce used to trigger reloads.
     "wait": 100,
 
     // Glob patterns ignored by both Watchdog and Sublime live reload.

@@ -549,9 +549,6 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
         if not server or not server.settings.liveReload:
             return
 
-        if view.is_auto_complete_visible():
-            return
-
         file_path = view.file_name()
         if not self._should_trigger(manager, server, file_path):
             return
@@ -565,19 +562,29 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
         delay_ms = server.settings.waitTimeMs
         timestamp = time.time()
         _last_modified[file_path] = timestamp
+        mode = "instant" if delay_ms <= 0 else "debounced"
 
-        if delay_ms <= 0:
-            info(f"Live reload (instant): {file_path}")
-            view.run_command('save')
-            return
-
-        def check_debounce(v=view, path=file_path, stamp=timestamp):
+        def attempt_save(v=view, path=file_path, stamp=timestamp, retries=0):
             if _last_modified.get(path) != stamp:
                 return
-            info(f"Live reload (debounced): {path}")
+
+            if v.window() is None:
+                return
+
+            # Avoid closing the auto-complete dropdown mid-selection (notably disruptive on Windows).
+            # Retry up to ~3 seconds (25 retries * 120ms) then give up to avoid infinite loops.
+            if v.is_auto_complete_visible():
+                if retries < 25:
+                    sublime.set_timeout(lambda: attempt_save(v, path, stamp, retries + 1), 120)
+                return
+
+            if not v.is_dirty():
+                return
+
+            info(f"Live reload ({mode}): {path}")
             v.run_command('save')
 
-        sublime.set_timeout_async(check_debounce, delay_ms)
+        sublime.set_timeout(lambda: attempt_save(view, file_path, timestamp), max(0, int(delay_ms)))
 
     def on_close(self, view):
         """Clean up debounce state when a view closes."""
