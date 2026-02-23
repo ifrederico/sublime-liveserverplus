@@ -261,7 +261,7 @@ class WebSocketHandler:
                 return None
             if opcode == 0x9:  # Ping -> respond with pong
                 try:
-                    conn.send(self._build_pong_frame(payload))
+                    conn.sendall(self._build_pong_frame(payload))
                 except Exception:
                     pass
                 return ''

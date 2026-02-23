@@ -66,8 +66,10 @@ class HTTPResponse:
         lines = []
         lines.append(f"HTTP/1.1 {self.status_code} {status_message}")
         
-        # Add content length
-        self.headers['Content-Length'] = str(len(self.body))
+        # Set Content-Length automatically unless caller provided one
+        # (streaming paths set it explicitly and send body separately).
+        if 'Content-Length' not in self.headers:
+            self.headers['Content-Length'] = str(len(self.body))
         
         # Build all headers at once
         lines.extend(f"{name}: {value}" for name, value in self.headers.items())
@@ -81,7 +83,7 @@ class HTTPResponse:
         """Send the response over a connection"""
         try:
             response_data = self.build()
-            conn.send(response_data)
+            conn.sendall(response_data)
             return True
         except Exception as e:
             error(f"Error sending response: {e}")
@@ -94,10 +96,10 @@ class HTTPResponse:
             # Find the end of headers (empty line)
             headers_end = response_data.find(b'\r\n\r\n')
             if headers_end != -1:
-                conn.send(response_data[:headers_end + 4])  # +4 for \r\n\r\n
+                conn.sendall(response_data[:headers_end + 4])  # +4 for \r\n\r\n
             else:
                 # Fallback if separator not found
-                conn.send(response_data)
+                conn.sendall(response_data)
             return True
         except Exception as e:
             error(f"Error sending headers: {e}")

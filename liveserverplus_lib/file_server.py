@@ -229,13 +229,13 @@ class FileServer:
             # Send headers first
             headers_data = response.build()
             headers_only = headers_data[:headers_data.rfind(b'\r\n\r\n') + 4]
-            conn.send(headers_only)
+            conn.sendall(headers_only)
             
             # Stream file contents
             file_reader = createFileReader(file_path)
             
             for chunk in file_reader:
-                conn.send(chunk)
+                conn.sendall(chunk)
                 
             return True
             
@@ -260,10 +260,10 @@ class FileServer:
             response.set_header('Content-Length', str(file_size))
             headers_data = response.build()
             headers_only = headers_data[:headers_data.rfind(b'\r\n\r\n') + 4]
-            conn.send(headers_only)
+            conn.sendall(headers_only)
             
             for chunk in createFileReader(file_path):
-                conn.send(chunk)
+                conn.sendall(chunk)
                 
             return True
         else:

@@ -115,7 +115,7 @@ class RequestHandler:
 
             response = self.websocket.handleWebSocketUpgrade(headers_list)
             if response:
-                conn.send(response.encode())
+                conn.sendall(response.encode())
                 self.websocket.addClient(conn)
                 self._handleWebSocketConnection(conn)
             else:
