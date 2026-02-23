@@ -3,7 +3,6 @@
 A lightweight development server with WebSocket‑based live reload.
 
 ![Live Server Plus Demo](./images/liveserverplus1.gif)
-![Live Server Plus Demo Markdown](./images/liveserverplus3.gif)
 
 ---
 
