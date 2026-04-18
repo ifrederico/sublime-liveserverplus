@@ -15,6 +15,7 @@ from .request_handler import RequestHandler
 from .logging import info, error
 from .utils import getFreePort
 from .connection_manager import ConnectionManager
+from .buffer_cache import BufferCache
 
 
 class Server(threading.Thread):
@@ -284,7 +285,11 @@ class Server(threading.Thread):
         self._shutdownFileWatcher()
         self._cleanupConnections()
         self._closeSocket()
-        
+
+        # Drop any in-memory buffer snapshots so a subsequent start (or
+        # external edit while stopped) cannot be shadowed by stale bytes.
+        BufferCache.getInstance().clear()
+
         self.status.update('stopped')
         info("Server shutdown complete")
 

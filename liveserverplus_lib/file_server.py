@@ -20,6 +20,16 @@ class FileServer:
         self.settings = settings
         self.websocket_injector = None  # Will be set by RequestHandler
         self.markdown_renderer = MarkdownRenderer()
+
+    def _cachedBufferFor(self, file_path):
+        """Return cached buffer bytes for ``file_path`` only when live
+        reload is active. The cache is populated by the Sublime modify
+        listener which runs only in that mode, so consulting it
+        otherwise risks serving stale snapshots from a previous session.
+        """
+        if not getattr(self.settings, 'liveReload', False):
+            return None
+        return BufferCache.getInstance().get(file_path)
         
     def serveFile(self, conn, path, folders):
         """
@@ -73,7 +83,7 @@ class FileServer:
         if getattr(self.settings, 'logging', False):
             info(f"Rendering Markdown preview: {file_path}")
 
-        cached = BufferCache.getInstance().get(file_path)
+        cached = self._cachedBufferFor(file_path)
         if cached is not None:
             try:
                 markdown_source = cached.decode('utf-8', errors='replace')
@@ -139,8 +149,10 @@ class FileServer:
 
         # If a Sublime view holds an unsaved edit for this path, serve that
         # snapshot instead of the on-disk bytes so live reload reflects
-        # in-progress typing without forcing a save.
-        cached = BufferCache.getInstance().get(full_path)
+        # in-progress typing without forcing a save. Only consulted while
+        # the live-reload feature is on; otherwise stale cache entries from
+        # a prior session would shadow the disk file.
+        cached = self._cachedBufferFor(full_path)
         if cached is not None and is_allowed:
             return self._sendFileContents(conn, full_path, mime_type, override_bytes=cached)
 
