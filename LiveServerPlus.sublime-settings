@@ -41,7 +41,8 @@
     "fullReload": false,
 
     // Debounce delay (ms) for reload events.
-    // Note: when "liveReload" is true, this also controls the auto-save debounce used to trigger reloads.
+    // When "liveReload" is true, this debounces the reload broadcast triggered by buffer modifications.
+    // The dev server serves the in-progress buffer snapshot, so your file is not saved until you save it.
     "wait": 100,
 
     // Glob patterns ignored by both Watchdog and Sublime live reload.

@@ -10,6 +10,7 @@ from .http_utils import (HTTPResponse, create_file_response, create_error_respon
 from .logging import info, error
 from .constants import STREAMING_THRESHOLD, LARGE_FILE_THRESHOLD
 from .markdown_renderer import MarkdownRenderer, guess_markdown_title
+from .buffer_cache import BufferCache
 
 
 class FileServer:
@@ -72,19 +73,27 @@ class FileServer:
         if getattr(self.settings, 'logging', False):
             info(f"Rendering Markdown preview: {file_path}")
 
-        try:
-            with open(file_path, 'r', encoding='utf-8') as handle:
-                markdown_source = handle.read()
-        except UnicodeDecodeError:
+        cached = BufferCache.getInstance().get(file_path)
+        if cached is not None:
             try:
-                with open(file_path, 'r', encoding='utf-8', errors='replace') as handle:
+                markdown_source = cached.decode('utf-8', errors='replace')
+            except Exception as exc:
+                error(f"Error decoding cached markdown buffer for {file_path}: {exc}")
+                return False
+        else:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as handle:
                     markdown_source = handle.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='replace') as handle:
+                        markdown_source = handle.read()
+                except OSError as exc:
+                    error(f"Error reading markdown file {file_path}: {exc}")
+                    return False
             except OSError as exc:
                 error(f"Error reading markdown file {file_path}: {exc}")
                 return False
-        except OSError as exc:
-            error(f"Error reading markdown file {file_path}: {exc}")
-            return False
 
         title = guess_markdown_title(file_path, markdown_source)
 
@@ -122,19 +131,26 @@ class FileServer:
 
         if file_ext == '.md' and self.settings.renderMarkdownPreview:
             return self._serveMarkdown(conn, full_path)
-            
+
         # Check if file is allowed using centralized function with optimized set
         is_allowed = isFileAllowed(full_path, self.settings.allowedFileTypesSet)
-        
+
+        mime_type = get_mime_type(full_path)
+
+        # If a Sublime view holds an unsaved edit for this path, serve that
+        # snapshot instead of the on-disk bytes so live reload reflects
+        # in-progress typing without forcing a save.
+        cached = BufferCache.getInstance().get(full_path)
+        if cached is not None and is_allowed:
+            return self._sendFileContents(conn, full_path, mime_type, override_bytes=cached)
+
         # Get file size for streaming decision
         try:
             file_size = os.path.getsize(full_path)
             should_stream = file_size > STREAMING_THRESHOLD
         except OSError:
             return False
-            
-        mime_type = get_mime_type(full_path)
-        
+
         # Handle different serving methods
         if is_allowed:
             if should_stream and not full_path.lower().endswith(('.html', '.htm')):
@@ -162,18 +178,27 @@ class FileServer:
             error(f"Error reading file {file_path}: {e}")
             return None
             
-    def _sendFileContents(self, conn, file_path, mime_type):
-        """Send file contents with optional WebSocket injection"""
-        # Check file size first to avoid loading large files
-        try:
-            file_size = os.path.getsize(file_path)
-            # Large files should be streamed, not loaded into memory
-            if file_size > LARGE_FILE_THRESHOLD and not file_path.lower().endswith(('.html', '.htm')):
-                return self._streamFile(conn, file_path, mime_type)
-        except OSError:
-            pass
-        
-        content = self._readFileFromDisk(file_path)
+    def _sendFileContents(self, conn, file_path, mime_type, override_bytes=None):
+        """Send file contents with optional WebSocket injection.
+
+        ``override_bytes`` lets callers bypass the disk read (used when a
+        dirty Sublime buffer snapshot should be served instead of the
+        on-disk contents).
+        """
+        if override_bytes is None:
+            # Check file size first to avoid loading large files
+            try:
+                file_size = os.path.getsize(file_path)
+                # Large files should be streamed, not loaded into memory
+                if file_size > LARGE_FILE_THRESHOLD and not file_path.lower().endswith(('.html', '.htm')):
+                    return self._streamFile(conn, file_path, mime_type)
+            except OSError:
+                pass
+
+            content = self._readFileFromDisk(file_path)
+        else:
+            content = override_bytes
+
         if content is None:
             return False
             
