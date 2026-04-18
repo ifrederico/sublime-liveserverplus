@@ -20,6 +20,7 @@ if VENDOR_PATH not in sys.path:
 # Now the imports will work
 from .liveserverplus_lib.logging import info, error
 from .liveserverplus_lib.path_utils import normalize_url_path, join_base_and_path
+from .liveserverplus_lib.buffer_cache import BufferCache
 from .ServerManager import ServerManager
 
 from .liveserverplus_lib.qr_utils import (get_server_urls, generate_qr_code_base64, HAS_QR_SUPPORT, get_local_ip)
@@ -533,10 +534,16 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
     def on_post_save_async(self, view):
         manager = ServerManager.getInstance()
         server = manager.getServer()
+
+        # Saved file is now authoritative on disk; drop any cached buffer
+        # snapshot so subsequent requests read the post-hooks contents.
+        file_path = view.file_name()
+        if file_path:
+            BufferCache.getInstance().evict(file_path)
+
         if not server or not server.settings.liveReload:
             return
 
-        file_path = view.file_name()
         if not self._should_trigger(manager, server, file_path):
             return
 
@@ -564,34 +571,36 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
         _last_modified[file_path] = timestamp
         mode = "instant" if delay_ms <= 0 else "debounced"
 
-        def attempt_save(v=view, path=file_path, stamp=timestamp, retries=0):
+        def attempt_reload(v=view, path=file_path, stamp=timestamp):
             if _last_modified.get(path) != stamp:
                 return
 
             if v.window() is None:
                 return
 
-            # Avoid closing the auto-complete dropdown mid-selection (notably disruptive on Windows).
-            # Retry up to ~3 seconds (25 retries * 120ms) then give up to avoid infinite loops.
-            if v.is_auto_complete_visible():
-                if retries < 25:
-                    sublime.set_timeout(lambda: attempt_save(v, path, stamp, retries + 1), 120)
+            # Snapshot the dirty buffer so the dev server can serve the
+            # in-progress edit without invoking Sublime's save pipeline
+            # (which would run on-save hooks like trim_trailing_white_space).
+            try:
+                content = v.substr(sublime.Region(0, v.size()))
+            except Exception as exc:
+                error(f"Live reload buffer snapshot failed for {path}: {exc}")
                 return
 
-            if not v.is_dirty():
-                return
+            BufferCache.getInstance().put(path, content)
 
             info(f"Live reload ({mode}): {path}")
-            v.run_command('save')
+            manager.onFileChange(path)
 
-        sublime.set_timeout(lambda: attempt_save(view, file_path, timestamp), max(0, int(delay_ms)))
+        sublime.set_timeout(lambda: attempt_reload(view, file_path, timestamp), max(0, int(delay_ms)))
 
     def on_close(self, view):
-        """Clean up debounce state when a view closes."""
+        """Clean up debounce state and cached buffer when a view closes."""
         self._last_change_count.pop(view.id(), None)
         file_path = view.file_name()
         if file_path:
             _last_modified.pop(file_path, None)
+            BufferCache.getInstance().evict(file_path)
 
 class LiveServerContextProvider(sublime_plugin.EventListener):
     """Provides context for key bindings"""
@@ -833,6 +842,7 @@ def plugin_unloaded():
         # Clear singleton instance to prevent memory leaks
         ServerManager._instance = None
         _SCROLL_SYNC_LISTENERS.clear()
+        BufferCache.getInstance().clear()
         info("Plugin unloaded successfully")
     except Exception as e:
         error(f"Error during plugin unload: {e}")
