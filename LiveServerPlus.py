@@ -26,7 +26,6 @@ from .ServerManager import ServerManager
 from .liveserverplus_lib.qr_utils import (get_server_urls, generate_qr_code_base64, HAS_QR_SUPPORT, get_local_ip)
 
 
-_last_modified = {}
 _SCROLL_SYNC_LISTENERS = {}
 
 
@@ -566,40 +565,27 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
             return
         self._last_change_count[view.id()] = change_count
 
-        delay_ms = server.settings.waitTimeMs
-        timestamp = time.time()
-        _last_modified[file_path] = timestamp
-        mode = "instant" if delay_ms <= 0 else "debounced"
+        # Snapshot the dirty buffer synchronously so the cache always
+        # reflects the latest keystroke. The WebSocket layer does its own
+        # debounce/coalescing of the broadcast itself; stacking a second
+        # debounce here used to race the broadcast and drop final updates
+        # (e.g. hit backspace twice rapidly and lose the second one).
+        try:
+            content = view.substr(sublime.Region(0, view.size()))
+        except Exception as exc:
+            error(f"Live reload buffer snapshot failed for {file_path}: {exc}")
+            return
 
-        def attempt_reload(v=view, path=file_path, stamp=timestamp):
-            if _last_modified.get(path) != stamp:
-                return
+        BufferCache.getInstance().put(file_path, content)
 
-            if v.window() is None:
-                return
-
-            # Snapshot the dirty buffer so the dev server can serve the
-            # in-progress edit without invoking Sublime's save pipeline
-            # (which would run on-save hooks like trim_trailing_white_space).
-            try:
-                content = v.substr(sublime.Region(0, v.size()))
-            except Exception as exc:
-                error(f"Live reload buffer snapshot failed for {path}: {exc}")
-                return
-
-            BufferCache.getInstance().put(path, content)
-
-            info(f"Live reload ({mode}): {path}")
-            manager.onFileChange(path)
-
-        sublime.set_timeout(lambda: attempt_reload(view, file_path, timestamp), max(0, int(delay_ms)))
+        info(f"Live reload: {file_path}")
+        manager.onFileChange(file_path)
 
     def on_close(self, view):
         """Clean up debounce state and cached buffer when a view closes."""
         self._last_change_count.pop(view.id(), None)
         file_path = view.file_name()
         if file_path:
-            _last_modified.pop(file_path, None)
             BufferCache.getInstance().evict(file_path)
 
 class LiveServerContextProvider(sublime_plugin.EventListener):
