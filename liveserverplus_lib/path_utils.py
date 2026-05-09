@@ -58,6 +58,32 @@ def validate_and_secure_path(base_folder, requested_path):
         return None
 
 
+def relative_to_root(file_path, roots):
+    """Return file_path relative to the first containing root, or None."""
+    if not file_path:
+        return None
+
+    try:
+        resolved_file = pathlib.Path(file_path).resolve()
+    except Exception as e:
+        error(f"Error resolving file path {file_path}: {e}")
+        return None
+
+    for root in roots or []:
+        try:
+            resolved_root = pathlib.Path(root).resolve()
+            rel_path = resolved_file.relative_to(resolved_root)
+            rel_path_str = str(rel_path)
+            return '' if rel_path_str == '.' else rel_path_str
+        except ValueError:
+            continue
+        except Exception as e:
+            error(f"Error checking path containment for {file_path}: {e}")
+            continue
+
+    return None
+
+
 def get_relative_path(root_path, file_path):
     """
     Get relative path from root to file.

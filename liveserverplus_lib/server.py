@@ -18,6 +18,12 @@ from .connection_manager import ConnectionManager
 from .buffer_cache import BufferCache
 
 
+def _bind_host_for_config(host):
+    """Return the socket bind host for the configured host value."""
+    host = host or '127.0.0.1'
+    return '127.0.0.1' if host == 'localhost' else host
+
+
 class Server(threading.Thread):
     """Main server class that handles HTTP requests and WebSocket connections"""
     
@@ -112,11 +118,10 @@ class Server(threading.Thread):
             # Some systems don't allow buffer size changes
             pass
 
-        host = self.settings.host
+        host = self.settings.host or '127.0.0.1'
         port = self.settings.port
         
-        # Always bind to 0.0.0.0 for network access when host is localhost/127.0.0.1
-        bind_host = '0.0.0.0' if host in ['localhost', '127.0.0.1'] else host
+        bind_host = _bind_host_for_config(host)
         
         # Try binding with increasing wait times
         max_attempts = 3

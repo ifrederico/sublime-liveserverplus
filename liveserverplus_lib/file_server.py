@@ -42,20 +42,26 @@ class FileServer:
                 index_path = os.path.join(folder, 'index.html')
                 if os.path.isfile(index_path):
                     return self._serveFile(conn, index_path, 'index.html', folder)
+            if path == '/':
+                for folder in folders:
+                    if os.path.isdir(folder):
+                        return self._serveDirectory(conn, folder, '/', folder)
             
         rel_path = unquote(path.lstrip('/'))
         
         # Try to find and serve the file
         for folder in folders:
-            full_path = os.path.join(folder, rel_path)
+            safe_path = validate_and_secure_path(folder, rel_path)
+            if not safe_path:
+                continue
             
             # Check if it's a directory
-            if os.path.isdir(full_path):
-                return self._serveDirectory(conn, full_path, path, folder)
+            if os.path.isdir(safe_path):
+                return self._serveDirectory(conn, safe_path, path, folder)
                 
             # Check if it's a file
-            if os.path.isfile(full_path):
-                return self._serveFile(conn, full_path, rel_path, folder)
+            if os.path.isfile(safe_path):
+                return self._serveFile(conn, safe_path, rel_path, folder)
                 
         return False
         

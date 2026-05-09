@@ -90,7 +90,7 @@ def inject_before_tag(html: str, tag: str, content: str) -> str:
         Modified HTML with content injected
     """
     pattern = re.compile(re.escape(tag), re.IGNORECASE)
-    substituted, count = pattern.subn(content, html, count=1)
+    substituted, count = pattern.subn(lambda match: content + match.group(0), html, count=1)
     
     # If tag not found, append at end
     if count == 0:

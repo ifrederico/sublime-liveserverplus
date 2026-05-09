@@ -252,3 +252,9 @@ class WatchdogEventHandler(FileSystemEventHandler):
     
     def on_created(self, event):
         """Handle file creation events"""
+        if not self.watcher._stop_event.is_set() and not event.is_directory:
+            if self._should_watch_file(event.src_path):
+                try:
+                    self.watcher.debounced_callback(event.src_path)
+                except Exception as e:
+                    error(f"Error in file create callback: {e}")

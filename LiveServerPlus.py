@@ -19,7 +19,7 @@ if VENDOR_PATH not in sys.path:
 
 # Now the imports will work
 from .liveserverplus_lib.logging import info, error
-from .liveserverplus_lib.path_utils import normalize_url_path, join_base_and_path
+from .liveserverplus_lib.path_utils import normalize_url_path, join_base_and_path, relative_to_root
 from .liveserverplus_lib.buffer_cache import BufferCache
 from .ServerManager import ServerManager
 
@@ -125,8 +125,8 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
         # Get server info
         protocol = 'http'
         configured_host = server.settings.host or '127.0.0.1'
-        prefer_local = server.settings.useLocalIp or configured_host in ['127.0.0.1', 'localhost', '0.0.0.0']
-        host = get_local_ip() if prefer_local else configured_host
+        prefer_local = server.settings.useLocalIp or configured_host == '0.0.0.0'
+        host = get_local_ip() if server.settings.useLocalIp else configured_host
         port = server.settings.port
 
         # Get URLs
@@ -139,11 +139,7 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
             file_path = view.file_name()
             
             # Find relative path from served folders
-            rel_path = None
-            for folder in server.folders:
-                if file_path.startswith(folder):
-                    rel_path = os.path.relpath(file_path, folder)
-                    break
+            rel_path = relative_to_root(file_path, server.folders)
             
             # If we found a relative path, append it to the URL
             if rel_path:
@@ -278,11 +274,9 @@ class LiveServerStartCommand(sublime_plugin.WindowCommand):
                 view = self.window.active_view()
                 if view and view.file_name() and manager.isFileAllowed(view.file_name()):
                     file_path = view.file_name()
-                    for folder in folders:
-                        if file_path.startswith(folder):
-                            rel_path = os.path.relpath(file_path, folder)
-                            target_path = normalize_url_path(rel_path) or '/'
-                            break
+                    rel_path = relative_to_root(file_path, folders)
+                    if rel_path:
+                        target_path = normalize_url_path(rel_path) or '/'
 
                 def open_when_ready(path, attempt=0):
                     if not manager.isRunning():
@@ -340,11 +334,7 @@ class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
         server = manager.getServer()
         
         # Find relative path from served folders
-        rel_path = None
-        for folder in server.folders:
-            if file_path.startswith(folder):
-                rel_path = os.path.relpath(file_path, folder)
-                break
+        rel_path = relative_to_root(file_path, server.folders)
                 
         # If file is not in served folders, auto-add its directory
         if not rel_path:
@@ -483,11 +473,7 @@ class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
             return '/'
 
         file_path = view.file_name()
-        rel_path = None
-        for folder in getattr(server, 'folders', []):
-            if file_path.startswith(folder):
-                rel_path = os.path.relpath(file_path, folder)
-                break
+        rel_path = relative_to_root(file_path, getattr(server, 'folders', []))
 
         if not rel_path:
             return '/'
@@ -716,13 +702,7 @@ class MarkdownScrollSyncListener(sublime_plugin.ViewEventListener):
         if not file_path:
             return None
 
-        for folder in server.folders:
-            if file_path.startswith(folder):
-                try:
-                    return os.path.relpath(file_path, folder)
-                except ValueError:
-                    return None
-        return None
+        return relative_to_root(file_path, server.folders)
 
     def _calculate_ratio(self):
         try:
