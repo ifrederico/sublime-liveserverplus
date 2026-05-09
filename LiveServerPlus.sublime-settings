@@ -4,13 +4,15 @@
     // Basic Server Settings
     // ==========================================
 
-    // Hostname/IP where the server runs. Use 0.0.0.0 for LAN access.
+    // Hostname/IP where the server runs. Keep 127.0.0.1 for local-only serving.
+    // For phone/tablet QR preview, use the "Enable LAN Access" command instead of editing this.
     "host": "127.0.0.1",
 
     // Port number for the server. Use 0 to select a random free port.
     "port": 5500,
 
-    // Browser to launch on start ("chrome", "firefox", "edge"). Leave empty for default.
+    // Browser to launch on start ("chrome", "firefox", "safari", "edge", "brave").
+    // Leave empty for the system default.
     "customBrowser": "",
 
     // Automatically open a browser when the server starts.
@@ -22,9 +24,9 @@
     // Verify HTML tags and warn when live reload injection fails.
     "verifyTags": true,
 
-    // Use the machine's LAN IP instead of localhost when possible.
-    // WARNING: Setting "host" to "0.0.0.0" exposes the server to your local network.
-    // Only use that on trusted networks.
+    // Enable LAN access for phones/tablets and QR preview.
+    // When true, the server listens on your local network and QR codes use your LAN IP.
+    // Only enable this on trusted networks.
     "useLocalIp": false,
 
     // Use the browser extension workflow instead of script injection.

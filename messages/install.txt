@@ -20,13 +20,23 @@ Available Commands:
 • **Live Server Plus: Open Current File**  
   Opens the current file in your browser through the dev server.
 
+• **Live Server Plus: Show Mobile QR Code**
+  Displays a QR linking phones/tablets to the dev URL. If LAN access is off, Sublime asks before enabling it.
+
+• **Live Server Plus: Enable LAN Access**
+  Allows devices on your local network to reach the server.
+
+• **Live Server Plus: Disable LAN Access**
+  Returns the server to local-only mode.
+
 • **Live Server Plus: Settings**  
   Opens the user settings for customizing host, port, live reload delay, etc.
 
 Useful Tips:
 • Watch the Sublime Text status bar for server status and port.
 • By default, the plugin injects a small WebSocket script into .html files for live reload.
-• You can enable or disable certain features (like compression, CORS, or directory listings) via “LiveServerPlus.sublime-settings.”
+• Local-only serving is the default. Use Enable LAN Access when you want QR/mobile preview on a trusted network.
+• You can enable or disable features via “LiveServerPlus.sublime-settings.”
 
 For more information or support, visit:
 https://github.com/ifrederico/sublime-liveserverplus
