@@ -150,6 +150,22 @@ def shouldSkipCompression(mime_type):
     return mime_type in SKIP_COMPRESSION_TYPES
 
 # Browser and network utilities
+def _escape_applescript_string(value):
+    return str(value).replace('\\', '\\\\').replace('"', '\\"')
+
+
+def _build_macos_browser_script(app_name, url):
+    """Build AppleScript that opens a URL and brings the browser forward."""
+    safe_app_name = _escape_applescript_string(app_name)
+    safe_url = _escape_applescript_string(url)
+    return (
+        f'tell application "{safe_app_name}"\n'
+        'activate\n'
+        f'open location "{safe_url}"\n'
+        'end tell'
+    )
+
+
 def openInBrowser(url, browser_name=None):
     """
     Open URL in specified browser or system default
@@ -191,7 +207,7 @@ def openInBrowser(url, browser_name=None):
                 import subprocess
                 try:
                     # Use AppleScript to open URL in specific browser
-                    script = f'tell application "{app_name}" to open location "{url}"'
+                    script = _build_macos_browser_script(app_name, url)
                     subprocess.run(['osascript', '-e', script], check=True)
                     return
                 except subprocess.CalledProcessError:

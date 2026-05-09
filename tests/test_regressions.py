@@ -134,6 +134,62 @@ class ServerBindTests(unittest.TestCase):
         self.assertEqual(_bind_host_for_config("0.0.0.0"), "0.0.0.0")
 
 
+class BrowserLaunchTests(unittest.TestCase):
+    def test_macos_browser_script_activates_requested_browser(self):
+        from liveserverplus_lib.utils import _build_macos_browser_script
+
+        script = _build_macos_browser_script("Google Chrome", "http://127.0.0.1:5500/index.html")
+
+        self.assertIn('tell application "Google Chrome"', script)
+        self.assertIn("activate", script)
+        self.assertIn('open location "http://127.0.0.1:5500/index.html"', script)
+
+
+class FileWatcherSetupTests(unittest.TestCase):
+    def test_setup_observers_does_not_schedule_root_twice(self):
+        from liveserverplus_lib.file_watcher import FileWatcher
+
+        class FakeObserver:
+            def __init__(self):
+                self.paths = []
+
+            def schedule(self, event_handler, path, recursive=False):
+                self.paths.append(path)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp, "site")
+            root.mkdir()
+            (root / "index.html").write_text("<h1>test</h1>", encoding="utf-8")
+
+            watcher = FileWatcher.__new__(FileWatcher)
+            watcher.folders = [str(root)]
+            watcher.settings = types.SimpleNamespace(
+                ignorePatterns=[],
+                ignoreDirs=[],
+                allowedFileTypes=[".html"],
+            )
+            watcher.event_handler = object()
+            watcher._ignore_patterns = []
+            watcher._max_directories = 50
+            watcher._dir_count = 0
+            watcher._using_polling = False
+
+            observer = FakeObserver()
+            watcher._setup_observers(observer)
+
+            self.assertEqual(observer.paths.count(str(root)), 1)
+
+
+class WebSocketTemplateTests(unittest.TestCase):
+    def test_reload_preserves_scroll_position(self):
+        template = (REPO_ROOT / "liveserverplus_lib" / "templates" / "websocket.html").read_text(encoding="utf-8")
+
+        self.assertIn("function saveScrollPosition()", template)
+        self.assertIn("function restoreScrollPosition()", template)
+        self.assertIn("saveScrollPosition();\n                        window.location.reload();", template)
+        self.assertIn("restoreScrollPosition();", template)
+
+
 class WatchdogEventHandlerTests(unittest.TestCase):
     def test_on_created_triggers_same_callback_path_as_modified(self):
         from liveserverplus_lib.file_watcher import WatchdogEventHandler

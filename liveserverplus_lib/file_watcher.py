@@ -87,7 +87,23 @@ class FileWatcher(threading.Thread):
         import os.path
         
         watched_dirs = []
+        watched_dir_keys = set()
         too_many_files = False
+
+        def schedule_directory(path):
+            key = os.path.normcase(os.path.abspath(path))
+            if key in watched_dir_keys:
+                return False
+
+            observer.schedule(
+                self.event_handler,
+                path,
+                recursive=False
+            )
+            self._dir_count += 1
+            watched_dirs.append(path)
+            watched_dir_keys.add(key)
+            return True
         
         for folder in self.folders:
             if not os.path.exists(folder):
@@ -101,13 +117,7 @@ class FileWatcher(threading.Thread):
             
             try:
                 # Schedule the root folder for watching
-                observer.schedule(
-                    self.event_handler,
-                    folder,
-                    recursive=False
-                )
-                self._dir_count += 1
-                watched_dirs.append(folder)
+                schedule_directory(folder)
                 
                 # Find all subdirectories that contain web files
                 web_dirs_to_watch = []
@@ -126,13 +136,7 @@ class FileWatcher(threading.Thread):
                 remaining_slots = self._max_directories - self._dir_count
                 for web_dir in web_dirs_to_watch[:remaining_slots]:
                     try:
-                        observer.schedule(
-                            self.event_handler,
-                            web_dir,
-                            recursive=False
-                        )
-                        self._dir_count += 1
-                        watched_dirs.append(web_dir)
+                        schedule_directory(web_dir)
                     except Exception as e:
                         if isinstance(e, OSError) and e.errno in (errno.EMFILE, errno.ENFILE):
                             too_many_files = True

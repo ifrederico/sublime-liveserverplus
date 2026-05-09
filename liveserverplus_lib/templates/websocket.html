@@ -30,6 +30,74 @@
             let suppressOutgoing = false;
             let lastSentScroll = 0;
             const SCROLL_SEND_INTERVAL = 80;
+            const scrollStorageKey = 'lsp-scroll:' + window.location.pathname + window.location.search;
+
+            function getScrollingElement() {
+                return document.scrollingElement || document.documentElement || document.body;
+            }
+
+            function saveScrollPosition() {
+                if (isMarkdownPreview) {
+                    return;
+                }
+
+                try {
+                    const scrollingElement = getScrollingElement();
+                    if (!scrollingElement || !window.sessionStorage) {
+                        return;
+                    }
+
+                    const maxScroll = Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
+                    const ratio = maxScroll > 0 ? scrollingElement.scrollTop / maxScroll : 0;
+                    const payload = {
+                        x: window.scrollX || 0,
+                        y: scrollingElement.scrollTop || 0,
+                        ratio: Math.max(0, Math.min(1, ratio))
+                    };
+                    window.sessionStorage.setItem(scrollStorageKey, JSON.stringify(payload));
+                } catch (err) {
+                    // Ignore storage errors; reload should still proceed.
+                }
+            }
+
+            function restoreScrollPosition() {
+                if (isMarkdownPreview) {
+                    return;
+                }
+
+                try {
+                    if (!window.sessionStorage) {
+                        return;
+                    }
+
+                    const raw = window.sessionStorage.getItem(scrollStorageKey);
+                    if (!raw) {
+                        return;
+                    }
+                    window.sessionStorage.removeItem(scrollStorageKey);
+
+                    const payload = JSON.parse(raw);
+                    setTimeout(function() {
+                        const scrollingElement = getScrollingElement();
+                        if (!scrollingElement) {
+                            return;
+                        }
+
+                        const maxScroll = Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
+                        const top = typeof payload.ratio === 'number'
+                            ? maxScroll * Math.max(0, Math.min(1, payload.ratio))
+                            : (payload.y || 0);
+
+                        if (typeof window.scrollTo === 'function') {
+                            window.scrollTo({ left: payload.x || 0, top: top, behavior: 'auto' });
+                        } else {
+                            scrollingElement.scrollTop = top;
+                        }
+                    }, 0);
+                } catch (err) {
+                    // Ignore malformed storage data.
+                }
+            }
 
             function applyScrollSync(ratio) {
                 if (!isMarkdownPreview || scrollMode === 'off') {
@@ -142,6 +210,7 @@
                 socket.onmessage = function(msg) {
                     if (msg.data === 'reload') {
                         console.log('Full page reload');
+                        saveScrollPosition();
                         window.location.reload();
                     } else if (msg.data === 'refreshcss') {
                         console.log('CSS refresh');
@@ -172,6 +241,7 @@
             }
 
             connect();
+            restoreScrollPosition();
 
             if (isMarkdownPreview && scrollMode === 'sync') {
                 window.addEventListener('scroll', function() {
