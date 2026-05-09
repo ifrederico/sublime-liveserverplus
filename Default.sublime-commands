@@ -35,10 +35,16 @@
     },
     {
         "caption": "Live Server Plus: Settings",
-        "command": "edit_settings",
-        "args": {
-            "base_file": "${packages}/LiveServerPlus/LiveServerPlus.sublime-settings",
-            "default": "// LiveServerPlus Settings - User\n{\n\t$0\n}\n"
-        }
+        "command": "live_server_settings"
+    },
+    {
+        "caption": "Live Server Plus: Enable Debug Logging",
+        "command": "live_server_set_logging",
+        "args": {"value": true}
+    },
+    {
+        "caption": "Live Server Plus: Disable Debug Logging",
+        "command": "live_server_set_logging",
+        "args": {"value": false}
     }
 ]

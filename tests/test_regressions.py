@@ -144,6 +144,38 @@ class BrowserLaunchTests(unittest.TestCase):
         self.assertIn("activate", script)
         self.assertIn('open location "http://127.0.0.1:5500/index.html"', script)
 
+    def test_subprocess_error_log_includes_return_code_and_stderr(self):
+        import subprocess
+
+        from liveserverplus_lib.utils import _format_subprocess_error
+
+        exc = subprocess.CalledProcessError(
+            returncode=1,
+            cmd=["osascript", "-e", "bad script"],
+            stderr="Application isn't running",
+            output="",
+        )
+
+        message = _format_subprocess_error(exc)
+
+        self.assertIn("exit=1", message)
+        self.assertIn("Application isn't running", message)
+
+
+class SettingsCommandTests(unittest.TestCase):
+    def test_menus_use_archive_safe_settings_command(self):
+        for menu_name in ("Main.sublime-menu", "Context.sublime-menu", "Default.sublime-commands"):
+            content = (REPO_ROOT / menu_name).read_text(encoding="utf-8")
+
+            self.assertIn('"command": "live_server_settings"', content)
+            self.assertNotIn('${packages}/LiveServerPlus/LiveServerPlus.sublime-settings', content)
+
+    def test_logging_toggle_commands_are_available(self):
+        commands = (REPO_ROOT / "Default.sublime-commands").read_text(encoding="utf-8")
+
+        self.assertIn("Live Server Plus: Enable Debug Logging", commands)
+        self.assertIn("Live Server Plus: Disable Debug Logging", commands)
+
 
 class FileWatcherSetupTests(unittest.TestCase):
     def test_setup_observers_does_not_schedule_root_twice(self):

@@ -19,6 +19,7 @@ if VENDOR_PATH not in sys.path:
 
 # Now the imports will work
 from .liveserverplus_lib.logging import info, error
+from .liveserverplus_lib import logging as lsp_logging
 from .liveserverplus_lib.path_utils import normalize_url_path, join_base_and_path, relative_to_root
 from .liveserverplus_lib.buffer_cache import BufferCache
 from .ServerManager import ServerManager
@@ -433,6 +434,58 @@ class LiveServerChangePortCommand(sublime_plugin.WindowCommand):
             _status_message(f"Restarting server on port {port}...")
         else:
             _status_message(f"Port changed to {port}")
+
+
+class LiveServerSettingsCommand(sublime_plugin.WindowCommand):
+    """Open the LiveServerPlus user settings without relying on unpacked package files."""
+
+    SETTINGS_FILE = "LiveServerPlus.sublime-settings"
+
+    def run(self):
+        user_dir = os.path.join(sublime.packages_path(), "User")
+        settings_path = os.path.join(user_dir, self.SETTINGS_FILE)
+
+        if not os.path.exists(settings_path):
+            try:
+                os.makedirs(user_dir, exist_ok=True)
+                with open(settings_path, "w", encoding="utf-8") as handle:
+                    handle.write("// LiveServerPlus Settings - User\n{\n\t\n}\n")
+            except Exception as exc:
+                error(f"Failed to create settings file: {exc}")
+                sublime.error_message(f"[LiveServerPlus] Failed to create settings file:\n{exc}")
+                return
+
+        self.window.open_file(settings_path)
+
+
+class LiveServerSetLoggingCommand(sublime_plugin.WindowCommand):
+    """Enable or disable LiveServerPlus console logging."""
+
+    def run(self, value):
+        enabled = bool(value)
+        settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+        settings.set("logging", enabled)
+        sublime.save_settings("LiveServerPlus.sublime-settings")
+
+        try:
+            lsp_logging._on_settings_change()
+        except Exception:
+            pass
+
+        message = "Debug logging enabled" if enabled else "Debug logging disabled"
+        sublime.status_message(f"[LiveServerPlus] {message}")
+        info(message)
+
+    def is_enabled(self, value=True):
+        return True
+
+    def is_visible(self, value=True):
+        settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+        return bool(value) != bool(settings.get("logging", False))
+
+    def description(self, value=True):
+        return "Enable Debug Logging" if value else "Disable Debug Logging"
+
 
 class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
     """Enable or disable live reload via Sublime saves."""

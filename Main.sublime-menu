@@ -43,14 +43,20 @@
                         "caption": "Change Port...",
                         "command": "live_server_change_port",
                     },
+                    {
+                        "caption": "Enable Debug Logging",
+                        "command": "live_server_set_logging",
+                        "args": { "value": true }
+                    },
+                    {
+                        "caption": "Disable Debug Logging",
+                        "command": "live_server_set_logging",
+                        "args": { "value": false }
+                    },
                     { "caption": "-" },
                     {
                         "caption": "Settings",
-                        "command": "edit_settings",
-                        "args": {
-                            "base_file": "${packages}/LiveServerPlus/LiveServerPlus.sublime-settings",
-                            "default": "// LiveServerPlus Settings - User\n{\n\t$0\n}\n"
-                        },
+                        "command": "live_server_settings",
                     }
                 ]
             }
@@ -67,11 +73,7 @@
                         "children": [
                             {
                                 "caption": "Settings",
-                                "command": "edit_settings",
-                                "args": {
-                                    "base_file": "${packages}/LiveServerPlus/LiveServerPlus.sublime-settings",
-                                    "default": "// LiveServerPlus Settings - User\n{\n\t$0\n}\n"
-                                }
+                                "command": "live_server_settings"
                             }
                         ]
                     }

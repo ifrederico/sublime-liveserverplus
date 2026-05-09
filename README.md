@@ -39,6 +39,7 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 | **Enable Live Reload** | Switch to Sublime-driven reload (auto-save option). |
 | **Disable Live Reload** | Return to Watchdog-based external file watching. |
 | **Change Port…** | Enter any port or **0** for “find a free one”. |
+| **Enable Debug Logging** | Print LiveServerPlus diagnostics to the Sublime console. |
 | **Settings…** | Opens the user settings file. |
 
 ### Command Palette
@@ -52,6 +53,8 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 - **Live Server Plus: Enable Live Reload**  
 - **Live Server Plus: Disable Live Reload**  
 - **Live Server Plus: Change Port…**  
+- **Live Server Plus: Enable Debug Logging**
+- **Live Server Plus: Disable Debug Logging**
 - **Live Server Plus: Settings**
 
 ### Example workflow

@@ -166,6 +166,20 @@ def _build_macos_browser_script(app_name, url):
     )
 
 
+def _format_subprocess_error(exc):
+    output = []
+    returncode = getattr(exc, 'returncode', None)
+    if returncode is not None:
+        output.append(f"exit={returncode}")
+    stderr = (getattr(exc, 'stderr', '') or '').strip()
+    stdout = (getattr(exc, 'stdout', '') or '').strip()
+    if stderr:
+        output.append(f"stderr={stderr}")
+    if stdout:
+        output.append(f"stdout={stdout}")
+    return ', '.join(output) or str(exc)
+
+
 def openInBrowser(url, browser_name=None):
     """
     Open URL in specified browser or system default
@@ -208,10 +222,20 @@ def openInBrowser(url, browser_name=None):
                 try:
                     # Use AppleScript to open URL in specific browser
                     script = _build_macos_browser_script(app_name, url)
-                    subprocess.run(['osascript', '-e', script], check=True)
+                    info(f"Running browser AppleScript for {app_name}")
+                    result = subprocess.run(
+                        ['osascript', '-e', script],
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.stdout.strip():
+                        info(f"Browser AppleScript stdout: {result.stdout.strip()}")
+                    if result.stderr.strip():
+                        info(f"Browser AppleScript stderr: {result.stderr.strip()}")
                     return
-                except subprocess.CalledProcessError:
-                    info(f"Failed to open {app_name}, falling back to default browser")
+                except subprocess.CalledProcessError as exc:
+                    info(f"Failed to open {app_name}, falling back to default browser ({_format_subprocess_error(exc)})")
             # Fall through to generic handling below.
 
         elif system == 'windows':
