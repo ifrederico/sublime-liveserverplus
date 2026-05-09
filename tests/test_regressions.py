@@ -43,6 +43,29 @@ class InjectionTests(unittest.TestCase):
 
 
 class PathContainmentTests(unittest.TestCase):
+    def test_validate_path_allows_double_dot_inside_filename(self):
+        from liveserverplus_lib.path_utils import validate_and_secure_path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp, "site")
+            root.mkdir()
+            file_path = root / "index..html"
+            file_path.write_text("inside", encoding="utf-8")
+
+            self.assertEqual(
+                validate_and_secure_path(str(root), "index..html"),
+                str(file_path.resolve()),
+            )
+
+    def test_validate_path_rejects_parent_directory_segment(self):
+        from liveserverplus_lib.path_utils import validate_and_secure_path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp, "site")
+            root.mkdir()
+
+            self.assertIsNone(validate_and_secure_path(str(root), "%2e%2e/secret.html"))
+
     def test_relative_to_root_rejects_sibling_prefix_matches(self):
         from liveserverplus_lib.path_utils import relative_to_root
 
@@ -135,14 +158,12 @@ class ServerBindTests(unittest.TestCase):
 
 
 class BrowserLaunchTests(unittest.TestCase):
-    def test_macos_browser_script_activates_requested_browser(self):
-        from liveserverplus_lib.utils import _build_macos_browser_script
+    def test_macos_browser_command_uses_open_a_to_foreground_browser(self):
+        from liveserverplus_lib.utils import _build_macos_open_command
 
-        script = _build_macos_browser_script("Google Chrome", "http://127.0.0.1:5500/index.html")
+        command = _build_macos_open_command("Google Chrome", "http://127.0.0.1:5500/index.html")
 
-        self.assertIn('tell application "Google Chrome"', script)
-        self.assertIn("activate", script)
-        self.assertIn('open location "http://127.0.0.1:5500/index.html"', script)
+        self.assertEqual(command, ["open", "-a", "Google Chrome", "http://127.0.0.1:5500/index.html"])
 
     def test_subprocess_error_log_includes_return_code_and_stderr(self):
         import subprocess

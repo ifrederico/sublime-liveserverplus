@@ -552,8 +552,11 @@ class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
 class LiveServerPlusListener(sublime_plugin.EventListener):
     """Triggers live reload when Sublime saves files."""
 
+    SNAPSHOT_DELAY_MS = 75
+
     def __init__(self):
         self._last_change_count = {}
+        self._pending_snapshot_tokens = {}
 
     def _should_trigger(self, manager, server, file_path):
         if not file_path:
@@ -604,11 +607,25 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
             return
         self._last_change_count[view.id()] = change_count
 
-        # Snapshot the dirty buffer synchronously so the cache always
-        # reflects the latest keystroke. The WebSocket layer does its own
-        # debounce/coalescing of the broadcast itself; stacking a second
-        # debounce here used to race the broadcast and drop final updates
-        # (e.g. hit backspace twice rapidly and lose the second one).
+        token = self._pending_snapshot_tokens.get(view.id(), 0) + 1
+        self._pending_snapshot_tokens[view.id()] = token
+        sublime.set_timeout_async(
+            lambda: self._flush_live_reload_snapshot(view, file_path, token),
+            self.SNAPSHOT_DELAY_MS
+        )
+
+    def _flush_live_reload_snapshot(self, view, file_path, token):
+        if self._pending_snapshot_tokens.get(view.id()) != token:
+            return
+
+        manager = ServerManager.getInstance()
+        server = manager.getServer()
+        if not server or not server.settings.liveReload:
+            return
+
+        if view.file_name() != file_path or not self._should_trigger(manager, server, file_path):
+            return
+
         try:
             content = view.substr(sublime.Region(0, view.size()))
         except Exception as exc:
@@ -623,6 +640,7 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
     def on_close(self, view):
         """Clean up debounce state and cached buffer when a view closes."""
         self._last_change_count.pop(view.id(), None)
+        self._pending_snapshot_tokens.pop(view.id(), None)
         file_path = view.file_name()
         if file_path:
             BufferCache.getInstance().evict(file_path)

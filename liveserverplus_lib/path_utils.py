@@ -27,8 +27,11 @@ def validate_and_secure_path(base_folder, requested_path):
         # Unquote URL encoding
         clean_path = unquote(requested_path)
         
-        # Check for suspicious patterns
-        if any(pattern in clean_path for pattern in ['..', '//', '\\\\', '\x00']):
+        # Reject path traversal segments without rejecting valid names such
+        # as "index..html". The resolved-path containment check below remains
+        # the final guard.
+        path_parts = clean_path.replace('\\', '/').split('/')
+        if '\x00' in clean_path or any(part == '..' for part in path_parts):
             info(f"Suspicious path pattern detected: {requested_path}")
             return None
         

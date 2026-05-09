@@ -150,20 +150,9 @@ def shouldSkipCompression(mime_type):
     return mime_type in SKIP_COMPRESSION_TYPES
 
 # Browser and network utilities
-def _escape_applescript_string(value):
-    return str(value).replace('\\', '\\\\').replace('"', '\\"')
-
-
-def _build_macos_browser_script(app_name, url):
-    """Build AppleScript that opens a URL and brings the browser forward."""
-    safe_app_name = _escape_applescript_string(app_name)
-    safe_url = _escape_applescript_string(url)
-    return (
-        f'tell application "{safe_app_name}"\n'
-        'activate\n'
-        f'open location "{safe_url}"\n'
-        'end tell'
-    )
+def _build_macos_open_command(app_name, url):
+    """Build the native macOS command for opening a URL in a foreground app."""
+    return ['open', '-a', str(app_name), str(url)]
 
 
 def _format_subprocess_error(exc):
@@ -206,7 +195,7 @@ def openInBrowser(url, browser_name=None):
         browser_key = browser_name.lower()
 
         if system == 'darwin':  # macOS
-            # Use osascript for reliable browser control on macOS
+            # Use macOS "open -a" so the selected browser is foregrounded.
             browser_map = {
                 'chrome': 'Google Chrome',
                 'firefox': 'Firefox',
@@ -220,21 +209,20 @@ def openInBrowser(url, browser_name=None):
                 
                 import subprocess
                 try:
-                    # Use AppleScript to open URL in specific browser
-                    script = _build_macos_browser_script(app_name, url)
-                    info(f"Running browser AppleScript for {app_name}")
+                    command = _build_macos_open_command(app_name, url)
+                    info(f"Running macOS open command for {app_name}")
                     result = subprocess.run(
-                        ['osascript', '-e', script],
+                        command,
                         check=True,
                         capture_output=True,
                         text=True
                     )
                     if result.stdout.strip():
-                        info(f"Browser AppleScript stdout: {result.stdout.strip()}")
+                        info(f"macOS open stdout: {result.stdout.strip()}")
                     if result.stderr.strip():
-                        info(f"Browser AppleScript stderr: {result.stderr.strip()}")
+                        info(f"macOS open stderr: {result.stderr.strip()}")
                     return
-                except subprocess.CalledProcessError as exc:
+                except (subprocess.CalledProcessError, OSError) as exc:
                     info(f"Failed to open {app_name}, falling back to default browser ({_format_subprocess_error(exc)})")
             # Fall through to generic handling below.
 
