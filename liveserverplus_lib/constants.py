@@ -247,6 +247,11 @@ BROWSER_COMMANDS = {
         'darwin': 'microsoft-edge',
         'linux': 'microsoft-edge',
         'windows': 'msedge'
+    },
+    'brave': {
+        'darwin': 'brave browser',
+        'linux': 'brave-browser',
+        'windows': 'brave'
     }
 }
 

@@ -155,6 +155,17 @@ def _build_macos_open_command(app_name, url):
     return ['open', '-a', str(app_name), str(url)]
 
 
+def _macos_browser_app_name(browser_key):
+    browser_map = {
+        'brave': 'Brave Browser',
+        'chrome': 'Google Chrome',
+        'firefox': 'Firefox',
+        'safari': 'Safari',
+        'edge': 'Microsoft Edge'
+    }
+    return browser_map.get(browser_key)
+
+
 def _format_subprocess_error(exc):
     output = []
     returncode = getattr(exc, 'returncode', None)
@@ -196,15 +207,9 @@ def openInBrowser(url, browser_name=None):
 
         if system == 'darwin':  # macOS
             # Use macOS "open -a" so the selected browser is foregrounded.
-            browser_map = {
-                'chrome': 'Google Chrome',
-                'firefox': 'Firefox',
-                'safari': 'Safari',
-                'edge': 'Microsoft Edge'
-            }
+            app_name = _macos_browser_app_name(browser_key)
             
-            if browser_key in browser_map:
-                app_name = browser_map[browser_key]
+            if app_name:
                 info(f"Opening URL in {app_name} on macOS: {url}")
                 
                 import subprocess
@@ -338,6 +343,12 @@ def openInBrowser(url, browser_name=None):
                         os.path.join(program_files_x86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
                         os.path.join(local_app_data, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
                     ]
+                elif key == 'brave':
+                    candidates = [
+                        os.path.join(program_files, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+                        os.path.join(program_files_x86, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+                        os.path.join(local_app_data, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+                    ]
                 else:
                     return ''
 
@@ -350,6 +361,7 @@ def openInBrowser(url, browser_name=None):
                     'firefox': 'firefox.exe',
                     'chrome': 'chrome.exe',
                     'edge': 'msedge.exe',
+                    'brave': 'brave.exe',
                 }
                 exe_name = exe_names.get(key, '')
                 resolved = _query_windows_app_paths_exe(exe_name)

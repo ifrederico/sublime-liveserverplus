@@ -165,6 +165,17 @@ class BrowserLaunchTests(unittest.TestCase):
 
         self.assertEqual(command, ["open", "-a", "Google Chrome", "http://127.0.0.1:5500/index.html"])
 
+    def test_macos_browser_app_name_resolves_brave_alias(self):
+        from liveserverplus_lib.utils import _macos_browser_app_name
+
+        self.assertEqual(_macos_browser_app_name("brave"), "Brave Browser")
+
+    def test_brave_has_browser_command_aliases(self):
+        from liveserverplus_lib.constants import BROWSER_COMMANDS
+
+        self.assertEqual(BROWSER_COMMANDS["brave"]["linux"], "brave-browser")
+        self.assertEqual(BROWSER_COMMANDS["brave"]["windows"], "brave")
+
     def test_subprocess_error_log_includes_return_code_and_stderr(self):
         import subprocess
 
