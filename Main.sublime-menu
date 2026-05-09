@@ -44,6 +44,16 @@
                         "command": "live_server_change_port",
                     },
                     {
+                        "caption": "Enable LAN Access",
+                        "command": "live_server_set_lan_access",
+                        "args": { "value": true }
+                    },
+                    {
+                        "caption": "Disable LAN Access",
+                        "command": "live_server_set_lan_access",
+                        "args": { "value": false }
+                    },
+                    {
                         "caption": "Enable Debug Logging",
                         "command": "live_server_set_logging",
                         "args": { "value": true }

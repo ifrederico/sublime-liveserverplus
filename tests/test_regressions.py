@@ -156,6 +156,11 @@ class ServerBindTests(unittest.TestCase):
         self.assertEqual(_bind_host_for_config("localhost"), "127.0.0.1")
         self.assertEqual(_bind_host_for_config("0.0.0.0"), "0.0.0.0")
 
+    def test_use_local_ip_binds_all_interfaces_after_opt_in(self):
+        from liveserverplus_lib.server import _bind_host_for_config
+
+        self.assertEqual(_bind_host_for_config("127.0.0.1", use_local_ip=True), "0.0.0.0")
+
 
 class BrowserLaunchTests(unittest.TestCase):
     def test_macos_browser_command_uses_open_a_to_foreground_browser(self):
@@ -194,6 +199,22 @@ class BrowserLaunchTests(unittest.TestCase):
         self.assertIn("Application isn't running", message)
 
 
+class QrUrlTests(unittest.TestCase):
+    def test_qr_urls_use_lan_ip_for_localhost_server(self):
+        from liveserverplus_lib import qr_utils
+
+        original_get_local_ip = qr_utils.get_local_ip
+        try:
+            qr_utils.get_local_ip = lambda: "192.168.1.20"
+
+            urls = qr_utils.get_server_urls("127.0.0.1", 5500, prefer_local_ip=True)
+
+            self.assertEqual(urls["primary"], "http://192.168.1.20:5500")
+            self.assertIn("http://127.0.0.1:5500", urls["all"])
+        finally:
+            qr_utils.get_local_ip = original_get_local_ip
+
+
 class SettingsCommandTests(unittest.TestCase):
     def test_menus_use_archive_safe_settings_command(self):
         for menu_name in ("Main.sublime-menu", "Context.sublime-menu", "Default.sublime-commands"):
@@ -207,6 +228,12 @@ class SettingsCommandTests(unittest.TestCase):
 
         self.assertIn("Live Server Plus: Enable Debug Logging", commands)
         self.assertIn("Live Server Plus: Disable Debug Logging", commands)
+
+    def test_lan_access_toggle_commands_are_available(self):
+        commands = (REPO_ROOT / "Default.sublime-commands").read_text(encoding="utf-8")
+
+        self.assertIn("Live Server Plus: Enable LAN Access", commands)
+        self.assertIn("Live Server Plus: Disable LAN Access", commands)
 
 
 class FileWatcherSetupTests(unittest.TestCase):

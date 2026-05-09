@@ -104,6 +104,7 @@ def _matches_ignore_patterns(file_path, patterns):
 
 class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
     """Show QR code for mobile device access"""
+    LOCAL_ONLY_HOSTS = {'127.0.0.1', 'localhost'}
     
     def run(self):
         manager = ServerManager.getInstance()
@@ -122,16 +123,26 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
         server = manager.getServer()
         if not server:
             return
+
+        configured_host = server.settings.host or '127.0.0.1'
+        if not server.settings.useLocalIp and configured_host in self.LOCAL_ONLY_HOSTS:
+            if not sublime.ok_cancel_dialog(
+                "Mobile QR preview requires LAN access.\n\n"
+                "Enable \"useLocalIp\" and restart Live Server Plus?",
+                "Enable & Restart"
+            ):
+                return
+
+            self._enable_local_ip_and_restart(manager, server)
+            return
             
         # Get server info
         protocol = 'http'
-        configured_host = server.settings.host or '127.0.0.1'
-        prefer_local = server.settings.useLocalIp or configured_host == '0.0.0.0'
-        host = get_local_ip() if server.settings.useLocalIp else configured_host
+        prefer_local = configured_host in ['localhost', '127.0.0.1', '0.0.0.0']
         port = server.settings.port
 
         # Get URLs
-        urls = get_server_urls(host, port, protocol=protocol, prefer_local_ip=prefer_local)
+        urls = get_server_urls(configured_host, port, protocol=protocol, prefer_local_ip=prefer_local)
         primary_url = urls['primary']
         
         # FIX: Get current file path and append to URL
@@ -155,6 +166,41 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
         
         # Show popup
         self._show_qr_popup(primary_url, qr_base64, port)
+
+    def _enable_local_ip_and_restart(self, manager, server):
+        folders = list(server.folders)
+        target_path = self._current_url_path(manager, server)
+        settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+        settings.set("useLocalIp", True)
+        sublime.save_settings("LiveServerPlus.sublime-settings")
+
+        manager.stop()
+
+        def restart_and_show_qr():
+            if manager.start(folders):
+                if target_path and server.settings.openBrowser:
+                    sublime.set_timeout(lambda: manager.openInBrowser(target_path), 150)
+                sublime.set_timeout(lambda: self.run(), 300)
+            else:
+                sublime.error_message("[LiveServerPlus] Failed to restart server with LAN access enabled.")
+
+        sublime.set_timeout(restart_and_show_qr, 600)
+
+    def _current_url_path(self, manager, server):
+        view = self.window.active_view()
+        if not view or not view.file_name():
+            return '/'
+
+        file_path = view.file_name()
+        rel_path = relative_to_root(file_path, getattr(server, 'folders', []))
+        if not rel_path:
+            return '/'
+
+        if not manager.isFileAllowed(file_path):
+            dir_rel = os.path.dirname(rel_path)
+            return normalize_url_path(dir_rel, is_directory=True) if dir_rel else '/'
+
+        return normalize_url_path(rel_path) or '/'
     
     def _show_qr_popup(self, url, qr_base64, port):
         """Display the QR code popup"""
@@ -485,6 +531,66 @@ class LiveServerSetLoggingCommand(sublime_plugin.WindowCommand):
 
     def description(self, value=True):
         return "Enable Debug Logging" if value else "Disable Debug Logging"
+
+
+class LiveServerSetLanAccessCommand(sublime_plugin.WindowCommand):
+    """Enable or disable LAN access for mobile/device preview."""
+
+    def run(self, value):
+        enabled = bool(value)
+        manager = ServerManager.getInstance()
+        server = manager.getServer()
+        folders = list(server.folders) if server else []
+        target_path = self._current_url_path(manager, server) if server else '/'
+
+        settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+        settings.set("useLocalIp", enabled)
+        sublime.save_settings("LiveServerPlus.sublime-settings")
+
+        if manager.isRunning() and server:
+            if hasattr(server, 'status'):
+                server.status.update('restarting')
+
+            manager.stop()
+
+            def restart():
+                if manager.start(folders):
+                    message = "LAN access enabled" if enabled else "LAN access disabled"
+                    _status_message(message)
+                    if target_path and server.settings.openBrowser:
+                        sublime.set_timeout(lambda: manager.openInBrowser(target_path), 200)
+                else:
+                    sublime.error_message("[LiveServerPlus] Failed to restart server after changing LAN access.")
+
+            sublime.set_timeout(restart, 600)
+        else:
+            _status_message("LAN access enabled" if enabled else "LAN access disabled")
+
+    def _current_url_path(self, manager, server):
+        view = self.window.active_view()
+        if not view or not view.file_name() or not server:
+            return '/'
+
+        file_path = view.file_name()
+        rel_path = relative_to_root(file_path, getattr(server, 'folders', []))
+        if not rel_path:
+            return '/'
+
+        if not manager.isFileAllowed(file_path):
+            dir_rel = os.path.dirname(rel_path)
+            return normalize_url_path(dir_rel, is_directory=True) if dir_rel else '/'
+
+        return normalize_url_path(rel_path) or '/'
+
+    def is_enabled(self, value=True):
+        return True
+
+    def is_visible(self, value=True):
+        settings = sublime.load_settings("LiveServerPlus.sublime-settings")
+        return bool(value) != bool(settings.get("useLocalIp", False))
+
+    def description(self, value=True):
+        return "Enable LAN Access" if value else "Disable LAN Access"
 
 
 class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):

@@ -34,6 +34,16 @@
         "command": "live_server_change_port"
     },
     {
+        "caption": "Live Server Plus: Enable LAN Access",
+        "command": "live_server_set_lan_access",
+        "args": {"value": true}
+    },
+    {
+        "caption": "Live Server Plus: Disable LAN Access",
+        "command": "live_server_set_lan_access",
+        "args": {"value": false}
+    },
+    {
         "caption": "Live Server Plus: Settings",
         "command": "live_server_settings"
     },

@@ -16,10 +16,10 @@ from .logging import info, error
 from .utils import getFreePort
 from .connection_manager import ConnectionManager
 from .buffer_cache import BufferCache
-
-
-def _bind_host_for_config(host):
+def _bind_host_for_config(host, use_local_ip=False):
     """Return the socket bind host for the configured host value."""
+    if use_local_ip:
+        return '0.0.0.0'
     host = host or '127.0.0.1'
     return '127.0.0.1' if host == 'localhost' else host
 
@@ -42,6 +42,7 @@ class Server(threading.Thread):
         self.file_watcher = None
         self._stop_flag = False
         self.sock = None
+        self.bound_host = None
         self.request_handler = None
 
         # Initialize managers
@@ -63,7 +64,7 @@ class Server(threading.Thread):
             
             # Update status
             self.status.update('running', self.settings.port)
-            info(f"Server running on {self.settings.host}:{self.settings.port}")
+            info(f"Server running on {self.bound_host or self.settings.host}:{self.settings.port}")
             
             # Main connection loop
             self._acceptConnections()
@@ -121,7 +122,7 @@ class Server(threading.Thread):
         host = self.settings.host or '127.0.0.1'
         port = self.settings.port
         
-        bind_host = _bind_host_for_config(host)
+        bind_host = _bind_host_for_config(host, self.settings.useLocalIp)
         
         # Try binding with increasing wait times
         max_attempts = 3
@@ -130,7 +131,8 @@ class Server(threading.Thread):
         while attempt < max_attempts:
             try:
                 self.sock.bind((bind_host, port))
-                info(f"Successfully bound to {host}:{port}")
+                self.bound_host = bind_host
+                info(f"Successfully bound to {bind_host}:{port}")
                 break
             except OSError as e:
                 attempt += 1
