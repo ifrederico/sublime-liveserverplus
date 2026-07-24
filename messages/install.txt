@@ -32,6 +32,17 @@ Available Commands:
 • **Live Server Plus: Settings**  
   Opens the user settings for customizing host, port, live reload delay, etc.
 
+Markdown Preview:
+• Markdown files are previewed GitHub-style, with live scroll sync.
+• Alert callouts (“> [!NOTE]”, “> [!WARNING]”, …), tables, task lists and
+  heading anchors are on by default.
+• Syntax highlighting, math and Mermaid diagrams are opt-in — set
+  “markdownSyntaxHighlighting”, “markdownMath” or “markdownMermaid” to true.
+• Those three ship with the plugin and are served from your own dev server,
+  never a CDN, so previews keep working offline and over LAN/QR on a phone.
+  They are off by default because each adds JavaScript the browser re-parses
+  on every reload; Mermaid is by far the heaviest.
+
 Useful Tips:
 • Watch the Sublime Text status bar for server status and port.
 • By default, the plugin injects a small WebSocket script into .html files for live reload.
