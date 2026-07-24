@@ -45,6 +45,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     'maxWatchedDirs': 50,
     'renderMarkdownPreview': True,
     'markdownScrollSync': 'editor',
+    'markdownSyntaxHighlighting': False,
+    'markdownMath': False,
+    'markdownMermaid': False,
 }
 
 
@@ -203,6 +206,19 @@ class ServerSettings:
     @property
     def renderMarkdownPreview(self) -> bool:
         return bool(self._config.get('renderMarkdownPreview', DEFAULT_SETTINGS['renderMarkdownPreview']))
+
+    @property
+    def markdownSyntaxHighlighting(self) -> bool:
+        return bool(self._config.get(
+            'markdownSyntaxHighlighting', DEFAULT_SETTINGS['markdownSyntaxHighlighting']))
+
+    @property
+    def markdownMath(self) -> bool:
+        return bool(self._config.get('markdownMath', DEFAULT_SETTINGS['markdownMath']))
+
+    @property
+    def markdownMermaid(self) -> bool:
+        return bool(self._config.get('markdownMermaid', DEFAULT_SETTINGS['markdownMermaid']))
 
     @property
     def markdownScrollSyncMode(self) -> str:

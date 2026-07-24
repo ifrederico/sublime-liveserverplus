@@ -72,7 +72,7 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 ## Features
 
 - **Instant reload** on file changes; optional CSS-only injection. Enable Sublime-only mode when you want immediate reloads on save, or leave it disabled to monitor external tools via Watchdog.  
-- **GitHub-style Markdown preview** with live scroll sync—defaults to editor→browser, switch to "sync" for two-way or `false` to disable.  
+- **GitHub-style Markdown preview** with live scroll sync—defaults to editor→browser, switch to "sync" for two-way or `false` to disable. GitHub alert callouts (`> [!NOTE]`) and heading anchors are always on; syntax highlighting, math, and Mermaid diagrams are opt-in (see below).  
 - **Mobile preview**: scan a QR code to open the site on devices on the same network. Local-only is the default; LAN access is opt-in.
 - **Port selection**: choose a port at startup or set `"port": 0` for a free one.  
 - **Automatic watcher fallback**: native watchers for performance, seamless polling fallback when macOS hits the file-descriptor limit.  
@@ -109,6 +109,9 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
     "maxWatchedDirs": 50,
     "renderMarkdownPreview": true,
     "markdownScrollSync": "editor", // "editor", "sync", or false
+    "markdownSyntaxHighlighting": false, // highlight.js
+    "markdownMath": false,               // KaTeX, $...$ and $$...$$
+    "markdownMermaid": false,            // ```mermaid diagrams
     "ignoreFiles": ["**/node_modules/**", "**/.git/**", "**/__pycache__/**"],
     "logging": false,
     "port": 5500,
@@ -120,6 +123,35 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 ```
 
 Restart the server after changing settings.
+
+### Markdown preview extras
+
+Three preview features are off by default:
+
+```json
+{
+    "markdownSyntaxHighlighting": true, // highlight fenced code blocks
+    "markdownMath": true,               // render $...$ and $$...$$
+    "markdownMermaid": true             // render ```mermaid diagrams
+}
+```
+
+These libraries (highlight.js, KaTeX, Mermaid) **ship with the plugin and are
+served from your own dev server** — nothing is fetched from a CDN, so previews
+keep working offline and over LAN/QR on a phone.
+
+They are opt-in because each one adds JavaScript that the browser re-parses on
+every reload, and the preview reloads on every keystroke. A script is only
+included when the document actually uses it: a file with no diagrams never
+loads Mermaid. Mermaid is by far the heaviest (~3.5 MB vs ~125 KB for
+highlight.js), so enable it only if you use diagrams.
+
+Always on, since they cost nothing extra: GitHub alert callouts
+(`> [!NOTE]`, `> [!WARNING]`, …), tables, task lists, and heading anchors.
+
+Math is detected server-side, which keeps ordinary prose safe — a line like
+`it costs $5 and $10` is left alone rather than being turned into math, and
+dollar signs inside code blocks and `` `code spans` `` are never touched.
 
 ### Local vs LAN access
 
@@ -175,9 +207,18 @@ Contributions welcome! Issues and pull requests are welcome.
 
 ## Vendored dependencies
 
+Python:
+
 - **Watchdog** – filesystem events  
 - **PyQRCode** and **pypng** – QR generation
 - **markdown2** – Markdown → HTML conversion 
+
+Browser assets for the Markdown preview, served from the dev server itself
+(never a CDN), each under its own upstream license:
+
+- **highlight.js** – code syntax highlighting
+- **KaTeX** – math rendering
+- **Mermaid** – diagrams
 
 All vendored under `liveserverplus_lib/vendor/`.
 

@@ -9,6 +9,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 VENDOR_PATH = REPO_ROOT / "liveserverplus_lib" / "vendor"
 if str(VENDOR_PATH) not in sys.path:
     sys.path.insert(0, str(VENDOR_PATH))
+# Also put the repo root on the path so this file runs standalone
+# (python tests/test_regressions.py), not just under pytest's rootdir handling.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 
 class _FakeSettings:
@@ -40,6 +44,182 @@ class InjectionTests(unittest.TestCase):
             inject_before_tag(html, "</body>", "<script></script>"),
             "<html><head></head><body>Hello<script></script></body></html>",
         )
+
+
+class MarkdownPreviewTests(unittest.TestCase):
+    """Covers the opt-in Markdown preview extras (issue #7)."""
+
+    CODE = "```python\nx = 1\n```"
+    MERMAID = "```mermaid\ngraph TD; A-->B;\n```"
+    MATH = "Value $x^2$ here."
+
+    def _render(self, text, **features):
+        from liveserverplus_lib.markdown_renderer import MarkdownRenderer
+
+        return MarkdownRenderer().render(text, **features)
+
+    def test_defaults_inject_no_assets(self):
+        """A default preview must stay as light as it was before the extras."""
+        html = self._render("\n\n".join([self.CODE, self.MERMAID, self.MATH]))
+
+        self.assertNotIn("<script", html)
+        self.assertNotIn("<link", html)
+
+    def test_assets_are_injected_only_when_the_document_uses_them(self):
+        """Each bundle is re-parsed on every reload, so it must be lazy."""
+        all_on = dict(syntax_highlighting=True, math=True, mermaid=True)
+
+        prose = self._render("Just **text**.", **all_on)
+        self.assertNotIn("highlight.min.js", prose)
+        self.assertNotIn("katex.min.js", prose)
+        self.assertNotIn("mermaid.min.js", prose)
+
+        code_only = self._render(self.CODE, **all_on)
+        self.assertIn("highlight.min.js", code_only)
+        self.assertNotIn("katex.min.js", code_only)
+        self.assertNotIn("mermaid.min.js", code_only)
+
+        mermaid_only = self._render(self.MERMAID, **all_on)
+        self.assertIn("mermaid.min.js", mermaid_only)
+        self.assertNotIn("highlight.min.js", mermaid_only)
+
+    def test_currency_amounts_are_not_treated_as_math(self):
+        from liveserverplus_lib.markdown_renderer import _protect_math
+
+        for text in ("It costs $5 and $10 today.", "From $5.00 to $10.00."):
+            _, spans = _protect_math(text)
+            self.assertEqual(spans, [], "false positive on: %s" % text)
+
+    def test_dollars_inside_code_are_not_treated_as_math(self):
+        from liveserverplus_lib.markdown_renderer import _protect_math
+
+        _, inline = _protect_math("Use `$not_math$` here.")
+        self.assertEqual(inline, [])
+
+        _, fenced = _protect_math("```sh\necho $HOME $PATH\n```")
+        self.assertEqual(fenced, [])
+
+    def test_display_math_survives_break_on_newline(self):
+        """`break-on-newline` would otherwise put <br> inside $$...$$."""
+        html = self._render("$$\n\\int_0^1 x^2 dx\n$$", math=True)
+
+        start = html.index("$$")
+        end = html.index("$$", start + 2)
+        self.assertNotIn("<br", html[start:end])
+
+    def test_math_is_escaped_so_it_cannot_break_the_document(self):
+        html = self._render("Compare $a < b$ now.", math=True)
+
+        self.assertIn("$a &lt; b$", html)
+        self.assertIn('data-lsp-tex="a &lt; b"', html)
+
+    def test_only_server_identified_spans_are_marked_for_katex(self):
+        """KaTeX auto-render would turn "$5 and $10" into math; we must not.
+
+        The browser renders `.lsp-math` nodes and nothing else, so the
+        currency heuristic in _protect_math stays authoritative.
+        """
+        html = self._render("Not math: it costs $5 and $10.", math=True)
+        self.assertNotIn('class="lsp-math"', html)
+        self.assertIn("<p>Not math: it costs $5 and $10.</p>", html)
+
+        mixed = self._render("Costs $5 but math $x^2$ ok.", math=True)
+        self.assertEqual(mixed.count('class="lsp-math"'), 1)
+        self.assertIn('data-lsp-tex="x^2"', mixed)
+
+    def test_display_math_is_marked_as_display(self):
+        html = self._render("$$\n\\int_0^1 x^2 dx\n$$", math=True)
+
+        self.assertIn('data-lsp-display="1"', html)
+
+    def test_katex_autorender_bundle_is_not_referenced(self):
+        html = self._render("Value $x^2$ here.", math=True)
+
+        self.assertIn("katex.min.js", html)
+        self.assertNotIn("auto-render", html)
+
+    def test_alerts_and_header_ids_are_always_on(self):
+        html = self._render("# Heading\n\n> [!WARNING]\n> Careful.")
+
+        self.assertIn('class="alert warning"', html)
+        self.assertIn('id="heading"', html)
+
+    def test_alert_body_leading_break_is_suppressed(self):
+        """`break-on-newline` puts a <br> right after the alert title.
+
+        markdown2 emits `<em>Warning</em>\\n<p><br>\\n  Careful.</p>`, and
+        that leading break renders as a blank line under the title. It is
+        hidden in CSS rather than stripped from the markup so that breaks
+        between the body's own lines still work.
+        """
+        html = self._render("> [!WARNING]\n> Careful.")
+
+        self.assertIn("<p><br", html)
+        self.assertIn(
+            ".markdown-body .alert > p:first-of-type > br:first-child", html
+        )
+
+    def test_alerts_use_an_icon_instead_of_a_side_rule(self):
+        """Alerts are marked by an icon in front of the title, not a bar."""
+        html = self._render("> [!WARNING]\n> Careful.")
+
+        self.assertNotIn("border-left: 0.25em solid var(--alert-accent", html)
+        self.assertIn(".markdown-body .alert > em::before", html)
+
+    def test_every_alert_type_has_its_own_icon(self):
+        """A missing --alert-icon renders as an empty box, not a fallback."""
+        html = self._render("> [!NOTE]\n> Body.")
+
+        for kind in ("note", "tip", "important", "warning", "caution"):
+            marker = ".markdown-body .alert.%s {" % kind
+            self.assertIn(marker, html, "no rule for %s" % kind)
+            block = html[html.index(marker):]
+            block = block[: block.index("}")]
+            self.assertIn("--alert-icon: url(\"data:image/svg+xml,", block,
+                          "%s has no icon" % kind)
+            self.assertIn("--alert-accent:", block, "%s has no accent" % kind)
+
+    def test_alert_icons_are_inlined_rather_than_fetched(self):
+        """The preview must keep working offline, like the vendored bundles."""
+        html = self._render("> [!TIP]\n> Body.")
+
+        self.assertNotIn("--alert-icon: url(\"http", html)
+        self.assertNotIn("--alert-icon: url(\"/", html)
+
+
+class VendorAssetServingTests(unittest.TestCase):
+    def test_vendored_assets_exist_on_disk(self):
+        from liveserverplus_lib.file_server import VENDOR_ASSETS_ROOT
+
+        for rel in (
+            "highlight/highlight.min.js",
+            "katex/katex.min.js",
+            "katex/katex.min.css",
+            "katex/fonts/KaTeX_Main-Regular.woff2",
+            "mermaid/mermaid.min.js",
+        ):
+            self.assertTrue(
+                os.path.isfile(os.path.join(VENDOR_ASSETS_ROOT, rel)),
+                "missing vendored asset: %s" % rel,
+            )
+
+    def test_asset_route_rejects_paths_outside_the_asset_root(self):
+        from liveserverplus_lib.file_server import VENDOR_ASSETS_ROOT
+        from liveserverplus_lib.path_utils import validate_and_secure_path
+
+        for rel in ("../file_server.py", "../../../etc/passwd", "katex/../../settings.py"):
+            resolved = validate_and_secure_path(VENDOR_ASSETS_ROOT, rel)
+            self.assertFalse(
+                resolved and os.path.isfile(resolved),
+                "escaped the asset root: %s" % rel,
+            )
+
+    def test_asset_url_prefix_matches_between_renderer_and_server(self):
+        """The renderer writes these URLs; the file server routes them."""
+        from liveserverplus_lib.markdown_renderer import ASSET_URL_PREFIX, MarkdownRenderer
+
+        html = MarkdownRenderer().render(MarkdownPreviewTests.CODE, syntax_highlighting=True)
+        self.assertIn(ASSET_URL_PREFIX + "/highlight/highlight.min.js", html)
 
 
 class PathContainmentTests(unittest.TestCase):

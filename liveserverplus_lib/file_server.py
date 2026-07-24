@@ -9,13 +9,17 @@ from .file_utils import (get_mime_type, isFileAllowed, should_compress_file)
 from .http_utils import (HTTPResponse, create_file_response, create_error_response)
 from .logging import info, error
 from .constants import STREAMING_THRESHOLD, LARGE_FILE_THRESHOLD
-from .markdown_renderer import MarkdownRenderer, guess_markdown_title
+from .markdown_renderer import MarkdownRenderer, guess_markdown_title, ASSET_URL_PREFIX
 from .buffer_cache import BufferCache
+
+# Vendored browser assets (highlight.js, KaTeX, Mermaid) served under a
+# reserved URL prefix so Markdown previews never reach out to a CDN.
+VENDOR_ASSETS_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vendor', 'assets')
 
 
 class FileServer:
     """Handles file serving operations"""
-    
+
     def __init__(self, settings):
         self.settings = settings
         self.websocket_injector = None  # Will be set by RequestHandler
@@ -36,6 +40,11 @@ class FileServer:
         Main entry point for serving files.
         Returns True if file was served, False otherwise.
         """
+        # Vendored preview assets are served from the package, not the
+        # user's folders, so they are resolved before anything else.
+        if path.startswith(ASSET_URL_PREFIX + '/'):
+            return self._serveVendorAsset(conn, path[len(ASSET_URL_PREFIX) + 1:])
+
         # Quick existence check for common case
         if path == '/' or path == '/index.html':
             for folder in folders:
@@ -84,6 +93,37 @@ class FileServer:
             error(f"Error serving directory: {e}")
             return False
 
+    def _serveVendorAsset(self, conn, rel_path):
+        """Serve a vendored preview asset (highlight.js / KaTeX / Mermaid).
+
+        These ship with the package and only change when the plugin itself
+        is updated, so unlike user files they are served with a long-lived
+        cache header. The Markdown preview reloads in full on every
+        debounced keystroke; without this the browser would re-fetch and
+        re-parse megabytes of JavaScript each time.
+        """
+        rel_path = unquote(rel_path)
+        safe_path = validate_and_secure_path(VENDOR_ASSETS_ROOT, rel_path)
+        if not safe_path or not os.path.isfile(safe_path):
+            return False
+
+        try:
+            with open(safe_path, 'rb') as handle:
+                content = handle.read()
+        except OSError as exc:
+            error(f"Error reading vendored asset {safe_path}: {exc}")
+            return False
+
+        response = HTTPResponse(200)
+        response.set_header('Content-Type', get_mime_type(safe_path))
+        response.set_body(content)
+        response.add_cache_headers('public, max-age=31536000, immutable')
+
+        if self.settings.corsEnabled:
+            response.add_cors_headers()
+
+        return response.send(conn)
+
     def _serveMarkdown(self, conn, file_path):
         """Render and serve Markdown documents as HTML."""
         if getattr(self.settings, 'logging', False):
@@ -115,7 +155,14 @@ class FileServer:
 
         try:
             scroll_mode = getattr(self.settings, 'markdownScrollSyncMode', 'editor')
-            html_doc = self.markdown_renderer.render(markdown_source, title=title, scroll_mode=scroll_mode)
+            html_doc = self.markdown_renderer.render(
+                markdown_source,
+                title=title,
+                scroll_mode=scroll_mode,
+                syntax_highlighting=getattr(self.settings, 'markdownSyntaxHighlighting', False),
+                math=getattr(self.settings, 'markdownMath', False),
+                mermaid=getattr(self.settings, 'markdownMermaid', False),
+            )
         except Exception as exc:
             error(f"Markdown rendering failed for {file_path}: {exc}")
             return False

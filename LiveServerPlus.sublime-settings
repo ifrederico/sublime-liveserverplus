@@ -78,5 +78,20 @@
     "renderMarkdownPreview": true,
 
     // Control Markdown scroll sync: "editor" (default), "sync", or false to disable.
-    "markdownScrollSync": "editor"
+    "markdownScrollSync": "editor",
+
+    // The three options below load assets that ship with the plugin — nothing
+    // is fetched from the internet, so they work offline and over LAN/QR.
+    // They are off by default because each one adds JavaScript that the preview
+    // re-parses on every reload; enable only what you use.
+
+    // Highlight fenced code blocks (highlight.js, ~125 KB).
+    "markdownSyntaxHighlighting": false,
+
+    // Render $...$ and $$...$$ math (KaTeX, ~570 KB including fonts).
+    "markdownMath": false,
+
+    // Render ```mermaid blocks as diagrams (Mermaid, ~3.5 MB — noticeably
+    // heavier than the others; only worth enabling if you use diagrams).
+    "markdownMermaid": false
 }
