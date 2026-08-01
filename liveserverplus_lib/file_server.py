@@ -2,6 +2,8 @@
 """File serving utilities"""
 import os
 from urllib.parse import unquote
+
+import sublime
 from .utils import (compressData, detectEncoding, createFileReader, 
                    streamCompressData, shouldSkipCompression)
 from .path_utils import validate_and_secure_path
@@ -13,8 +15,26 @@ from .markdown_renderer import MarkdownRenderer, guess_markdown_title, ASSET_URL
 from .buffer_cache import BufferCache
 
 # Vendored browser assets (highlight.js, KaTeX, Mermaid) served under a
-# reserved URL prefix so Markdown previews never reach out to a CDN.
-VENDOR_ASSETS_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vendor', 'assets')
+# reserved URL prefix so Markdown previews never reach out to a CDN. Sublime's
+# resource API works for both unpacked development packages and installed
+# .sublime-package archives; ordinary filesystem APIs do not work inside the
+# latter.
+VENDOR_ASSET_RESOURCE_ROOT = (
+    'Packages/LiveServerPlus/liveserverplus_lib/vendor/assets'
+)
+
+
+def _vendor_asset_resource_path(rel_path):
+    """Return a safe Sublime resource path for a vendored browser asset."""
+    rel_path = unquote(rel_path)
+    if not rel_path or '\x00' in rel_path or '\\' in rel_path:
+        return None
+
+    parts = rel_path.split('/')
+    if any(part in ('', '.', '..') for part in parts):
+        return None
+
+    return VENDOR_ASSET_RESOURCE_ROOT + '/' + '/'.join(parts)
 
 
 class FileServer:
@@ -102,20 +122,18 @@ class FileServer:
         debounced keystroke; without this the browser would re-fetch and
         re-parse megabytes of JavaScript each time.
         """
-        rel_path = unquote(rel_path)
-        safe_path = validate_and_secure_path(VENDOR_ASSETS_ROOT, rel_path)
-        if not safe_path or not os.path.isfile(safe_path):
+        resource_path = _vendor_asset_resource_path(rel_path)
+        if not resource_path:
             return False
 
         try:
-            with open(safe_path, 'rb') as handle:
-                content = handle.read()
-        except OSError as exc:
-            error(f"Error reading vendored asset {safe_path}: {exc}")
+            content = sublime.load_binary_resource(resource_path)
+        except Exception as exc:
+            error(f"Error loading vendored asset {resource_path}: {exc}")
             return False
 
         response = HTTPResponse(200)
-        response.set_header('Content-Type', get_mime_type(safe_path))
+        response.set_header('Content-Type', get_mime_type(resource_path))
         response.set_body(content)
         response.add_cache_headers('public, max-age=31536000, immutable')
 

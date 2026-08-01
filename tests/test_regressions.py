@@ -23,8 +23,16 @@ class _FakeSettings:
         pass
 
 
+def _load_binary_resource(resource_path):
+    prefix = "Packages/LiveServerPlus/"
+    if not resource_path.startswith(prefix):
+        raise FileNotFoundError(resource_path)
+    return (REPO_ROOT / resource_path[len(prefix):]).read_bytes()
+
+
 fake_sublime = types.SimpleNamespace(
     load_settings=lambda name: _FakeSettings(),
+    load_binary_resource=_load_binary_resource,
     set_timeout=lambda callback, delay=0: callback(),
     set_timeout_async=lambda callback, delay=0: callback(),
     status_message=lambda message: None,
@@ -188,8 +196,15 @@ class MarkdownPreviewTests(unittest.TestCase):
 
 
 class VendorAssetServingTests(unittest.TestCase):
-    def test_vendored_assets_exist_on_disk(self):
-        from liveserverplus_lib.file_server import VENDOR_ASSETS_ROOT
+    class _Connection:
+        def __init__(self):
+            self.data = b""
+
+        def sendall(self, data):
+            self.data += data
+
+    def test_vendored_assets_are_available_as_sublime_resources(self):
+        from liveserverplus_lib.file_server import VENDOR_ASSET_RESOURCE_ROOT
 
         for rel in (
             "highlight/highlight.min.js",
@@ -198,21 +213,53 @@ class VendorAssetServingTests(unittest.TestCase):
             "katex/fonts/KaTeX_Main-Regular.woff2",
             "mermaid/mermaid.min.js",
         ):
-            self.assertTrue(
-                os.path.isfile(os.path.join(VENDOR_ASSETS_ROOT, rel)),
-                "missing vendored asset: %s" % rel,
-            )
+            resource_path = VENDOR_ASSET_RESOURCE_ROOT + "/" + rel
+            self.assertTrue(fake_sublime.load_binary_resource(resource_path))
 
-    def test_asset_route_rejects_paths_outside_the_asset_root(self):
-        from liveserverplus_lib.file_server import VENDOR_ASSETS_ROOT
-        from liveserverplus_lib.path_utils import validate_and_secure_path
+    def test_packaged_asset_is_served_through_sublime_resource_api(self):
+        from liveserverplus_lib.file_server import FileServer
 
-        for rel in ("../file_server.py", "../../../etc/passwd", "katex/../../settings.py"):
-            resolved = validate_and_secure_path(VENDOR_ASSETS_ROOT, rel)
-            self.assertFalse(
-                resolved and os.path.isfile(resolved),
-                "escaped the asset root: %s" % rel,
+        expected_path = (
+            "Packages/LiveServerPlus/liveserverplus_lib/vendor/assets/"
+            "katex/katex.min.js"
+        )
+        payload = b"window.katex = {};"
+        calls = []
+        original_loader = fake_sublime.load_binary_resource
+
+        def packaged_loader(resource_path):
+            calls.append(resource_path)
+            if resource_path != expected_path:
+                raise FileNotFoundError(resource_path)
+            return payload
+
+        fake_sublime.load_binary_resource = packaged_loader
+        try:
+            connection = self._Connection()
+            settings = types.SimpleNamespace(corsEnabled=False)
+            served = FileServer(settings)._serveVendorAsset(
+                connection, "katex/katex.min.js"
             )
+        finally:
+            fake_sublime.load_binary_resource = original_loader
+
+        self.assertTrue(served)
+        self.assertEqual(calls, [expected_path])
+        self.assertIn(b"HTTP/1.1 200 OK", connection.data)
+        self.assertIn(b"Content-Type: application/javascript", connection.data)
+        self.assertTrue(connection.data.endswith(payload))
+
+    def test_asset_route_rejects_paths_outside_the_resource_root(self):
+        from liveserverplus_lib.file_server import _vendor_asset_resource_path
+
+        for rel in (
+            "../file_server.py",
+            "../../../etc/passwd",
+            "katex/../../settings.py",
+            "katex/%2e%2e/settings.py",
+            "katex\\katex.min.js",
+        ):
+            self.assertIsNone(_vendor_asset_resource_path(rel))
 
     def test_asset_url_prefix_matches_between_renderer_and_server(self):
         """The renderer writes these URLs; the file server routes them."""
