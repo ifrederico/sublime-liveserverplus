@@ -13,33 +13,11 @@ if str(VENDOR_PATH) not in sys.path:
 # (python tests/test_regressions.py), not just under pytest's rootdir handling.
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
-class _FakeSettings:
-    def get(self, key, default=None):
-        return default
-
-    def add_on_change(self, key, callback):
-        pass
-
-
-def _load_binary_resource(resource_path):
-    prefix = "Packages/LiveServerPlus/"
-    if not resource_path.startswith(prefix):
-        raise FileNotFoundError(resource_path)
-    return (REPO_ROOT / resource_path[len(prefix):]).read_bytes()
-
-
-fake_sublime = types.SimpleNamespace(
-    load_settings=lambda name: _FakeSettings(),
-    load_binary_resource=_load_binary_resource,
-    set_timeout=lambda callback, delay=0: callback(),
-    set_timeout_async=lambda callback, delay=0: callback(),
-    status_message=lambda message: None,
-    error_message=lambda message: None,
-    message_dialog=lambda message: None,
-)
-sys.modules.setdefault("sublime", fake_sublime)
+from _sublime_stub import fake_sublime  # noqa: E402  (installs the stub)
 
 
 class InjectionTests(unittest.TestCase):
