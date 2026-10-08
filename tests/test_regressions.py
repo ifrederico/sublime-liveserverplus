@@ -195,6 +195,128 @@ class MarkdownPreviewTests(unittest.TestCase):
         self.assertNotIn("--alert-icon: url(\"/", html)
 
 
+class MarkdownHtmlBlockTests(unittest.TestCase):
+    """Raw HTML blocks end where GitHub says they end (issue #9).
+
+    markdown2 finds the end of a raw HTML block by matching open and close
+    tags. GitHub follows CommonMark: a block runs from a block-level tag to
+    the next blank line, whatever the tags inside it look like.
+    """
+
+    # The opening of ghostty's README: a <p> that is never closed inside the
+    # <h1>, then a stray </p>. markdown2 lost the rest of the file after it.
+    GHOSTTY_HEADER = (
+        "<!-- LOGO -->\n"
+        "<h1>\n"
+        "<p align=\"center\">\n"
+        "  <img src=\"logo.png\" alt=\"Logo\" width=\"128\">\n"
+        "  <br>Ghostty\n"
+        "</h1>\n"
+        "  <p align=\"center\">\n"
+        "    Fast, native, feature-rich terminal emulator.\n"
+        "    <a href=\"#about\">About</a>\n"
+        "  </p>\n"
+        "</p>\n"
+        "\n"
+        "## About\n"
+        "\n"
+        "**`libghostty`** is a [library](https://example.com).\n"
+        "\n"
+        "| # | Step |\n"
+        "|---|------|\n"
+        "| 1 | Done |\n"
+    )
+
+    def _body(self, text):
+        from liveserverplus_lib.markdown_renderer import MarkdownRenderer
+
+        html = MarkdownRenderer().render(text)
+        start = html.index('<main class="markdown-body">') + len('<main class="markdown-body">')
+        return html[start:html.index("</main>")].strip()
+
+    def test_mismatched_tags_do_not_swallow_the_rest_of_the_document(self):
+        body = self._body(self.GHOSTTY_HEADER)
+
+        self.assertIn('<h2 id="about">About</h2>', body)
+        self.assertIn("<strong><code>libghostty</code></strong>", body)
+        self.assertIn('<a href="https://example.com">library</a>', body)
+        self.assertIn("<table>", body)
+        self.assertNotIn("## About", body)
+        self.assertNotIn("[library](", body)
+
+    def test_html_block_is_passed_through_verbatim(self):
+        """No <p> around it and no <br /> from break-on-newline inside it."""
+        body = self._body(self.GHOSTTY_HEADER)
+        block = body[: body.index("<h2")]
+
+        self.assertNotIn("<br />", block)
+        self.assertNotIn("<p><p", block)
+        self.assertIn('  <p align="center">\n    Fast, native', block)
+
+    def test_block_ends_at_blank_line_so_markdown_inside_details_renders(self):
+        """The common README idiom: <details> wrapped around a code block."""
+        body = self._body(
+            "<details>\n<summary>Install</summary>\n\n```sh\nnpm install\n```\n\n</details>\n"
+        )
+
+        self.assertTrue(body.startswith("<details>\n<summary>Install</summary>"))
+        self.assertIn("<pre><code>npm install\n</code></pre>", body)
+        self.assertTrue(body.endswith("</details>"))
+        self.assertNotIn("<p><details>", body)
+
+    def test_markdown_between_html_blocks_is_rendered(self):
+        body = self._body("<div>\n\n*emphasis*\n\n</div>\n")
+
+        self.assertEqual(body, "<div>\n\n<p><em>emphasis</em></p>\n\n</div>")
+
+    def test_indented_block_is_not_wrapped_in_a_paragraph(self):
+        body = self._body('  <p align="center">\n    <img src="x.png">\n  </p>\n\n## Next\n')
+
+        self.assertTrue(body.startswith('<p align="center">\n  <img src="x.png">\n</p>'))
+        self.assertNotIn("<br />", body)
+        self.assertIn('<h2 id="next">Next</h2>', body)
+
+    def test_block_inside_a_list_item_stays_in_the_item(self):
+        body = self._body("- item\n\n  <div>x</div>\n\n- next\n")
+
+        self.assertEqual(body.count("<ul>"), 1)
+        self.assertLess(body.index("<div>x</div>"), body.index("next"))
+        self.assertNotIn("<p><div>", body)
+
+    def test_html_inside_fenced_code_is_still_code(self):
+        body = self._body("```html\n<div>\n*x*\n</div>\n```\n")
+
+        self.assertIn("&lt;div&gt;\n*x*\n&lt;/div&gt;", body)
+        self.assertNotIn("<div>", body)
+
+    def test_pre_block_keeps_its_blank_lines_and_raw_content(self):
+        body = self._body("<pre>\n*a*\n\nb\n</pre>\n\n*c*\n")
+
+        self.assertTrue(body.startswith("<pre>\n*a*\n\nb\n</pre>"))
+        self.assertIn("<p><em>c</em></p>", body)
+
+    def test_a_lone_tag_line_cannot_interrupt_a_paragraph(self):
+        """Condition 7 of the spec: `<img>` right under text stays in it."""
+        self.assertEqual(
+            self._body('Some text\n<img src="x.png">\n'),
+            '<p>Some text<br />\n<img src="x.png"></p>',
+        )
+        self.assertEqual(
+            self._body('Some text\n\n<img src="x.png">\n\nMore\n'),
+            '<p>Some text</p>\n\n<img src="x.png">\n\n<p>More</p>',
+        )
+
+    def test_autolinks_and_inline_html_are_untouched(self):
+        self.assertEqual(
+            self._body("<https://example.com>\n"),
+            '<p><a href="https://example.com">https://example.com</a></p>',
+        )
+        self.assertEqual(
+            self._body("Use <kbd>Ctrl</kbd>+<kbd>C</kbd>\n"),
+            "<p>Use <kbd>Ctrl</kbd>+<kbd>C</kbd></p>",
+        )
+
+
 class VendorAssetServingTests(unittest.TestCase):
     class _Connection:
         def __init__(self):

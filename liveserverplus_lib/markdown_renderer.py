@@ -361,6 +361,199 @@ def _escape_html_attr(value: str) -> str:
     return _escape_html_text(value).replace('"', "&quot;").replace("'", "&#39;")
 
 
+# ---------------------------------------------------------------------------
+# Raw HTML blocks, the CommonMark way (issue #9)
+#
+# markdown2 decides where a raw HTML block ends by counting matching open and
+# close tags. GitHub (cmark-gfm) follows the CommonMark spec instead: a block
+# starts at a line that opens with a block-level tag and simply runs until the
+# next blank line, with no tag matching at all. Real-world READMEs lean on the
+# latter all the time, with mismatched tags in a centred header, a `<details>`
+# wrapped around a fenced code block, or a `<p align="center">` indented by two
+# spaces, and every one of those made markdown2 lose the plot: either the rest
+# of the file came out as raw text, or a `<p>` got wrapped around the HTML with
+# `<br />` after every line.
+#
+# The pass below finds the blocks by the spec's seven start/end conditions and
+# hands each one to markdown2's own hash table before its heuristics run. What
+# is left for markdown2 is Markdown, which it handles well.
+# ---------------------------------------------------------------------------
+
+# Spec section 4.6, condition 6: tag names that open a block outright.
+_HTML_BLOCK_TAGS = (
+    "address|article|aside|base|basefont|blockquote|body|caption|center|col|"
+    "colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|"
+    "footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|"
+    "link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|"
+    "section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul"
+)
+
+# Spec's attribute and tag grammar, used by condition 7.
+_ATTRIBUTE = (
+    r"\s+[A-Za-z_:][A-Za-z0-9_.:-]*"
+    r"(?:\s*=\s*(?:[^\s\"'=<>`]+|'[^']*'|\"[^\"]*\"))?"
+)
+_OPEN_TAG = r"<[A-Za-z][A-Za-z0-9-]*(?:" + _ATTRIBUTE + r")*\s*/?>"
+_CLOSING_TAG = r"</[A-Za-z][A-Za-z0-9-]*\s*>"
+
+# One (start, end) pair per condition, in the order the spec checks them.
+# Condition 7 is last and is the only one that may not interrupt a paragraph.
+# `end` matches on the line that closes the block; None means "a blank line
+# ends it" and the blank line itself is not part of the block.
+_HTML_BLOCK_CONDITIONS: Tuple[Tuple["re.Pattern", Optional["re.Pattern"]], ...] = (
+    (re.compile(r"^ {0,3}<(?:script|pre|style|textarea)(?:\s|>|$)", re.I),
+     re.compile(r"</(?:script|pre|style|textarea)>", re.I)),
+    (re.compile(r"^ {0,3}<!--"), re.compile(r"-->")),
+    (re.compile(r"^ {0,3}<\?"), re.compile(r"\?>")),
+    (re.compile(r"^ {0,3}<![A-Za-z]"), re.compile(r">")),
+    (re.compile(r"^ {0,3}<!\[CDATA\["), re.compile(r"\]\]>")),
+    (re.compile(r"^ {0,3}</?(?:" + _HTML_BLOCK_TAGS + r")(?:\s|/?>|$)", re.I), None),
+    (re.compile(r"^ {0,3}(?:" + _OPEN_TAG + r"|" + _CLOSING_TAG + r")\s*$"), None),
+)
+_PARAGRAPH_INTERRUPTING_CONDITIONS = _HTML_BLOCK_CONDITIONS[:-1]
+
+# Lines that end the block before them, so that a condition-7 tag on the next
+# line is not a paragraph continuation: an ATX heading, a thematic break or a
+# setext underline. Blank lines and fences are handled separately.
+_BLOCK_BOUNDARY_RE = re.compile(r"^ {0,3}(?:#{1,6}(?:\s|$)|(?:[-*_]\s*){3,}$|=+\s*$|-+\s*$)")
+
+_FENCE_OPEN_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+
+
+def _leading_spaces(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _fence_close_re(fence: str) -> "re.Pattern":
+    return re.compile(r"^[ \t]*" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*$")
+
+
+def _html_block_start(line: str, at_boundary: bool) -> Tuple[bool, Optional["re.Pattern"]]:
+    """Tell whether `line` opens a raw HTML block, and what closes it.
+
+    Returns ``(True, end_pattern)`` for a block; ``end_pattern`` is None when
+    the block simply runs to the next blank line. Condition 7 is only tried
+    when the line does not continue a paragraph.
+    """
+    conditions = (
+        _HTML_BLOCK_CONDITIONS if at_boundary else _PARAGRAPH_INTERRUPTING_CONDITIONS
+    )
+    for start, end in conditions:
+        if start.match(line):
+            return True, end
+    return False, None
+
+
+def _find_html_blocks(lines: List[str]) -> List[Tuple[int, int]]:
+    """Return ``(first, last)`` line-index ranges of the raw HTML blocks.
+
+    Lines inside fenced code are never HTML, so fences are tracked and
+    skipped. The rest follows CommonMark 4.6 closely enough for READMEs:
+    start conditions need at most three spaces of indentation; conditions
+    1-5 end on the line carrying their terminator (or at the end of the
+    document); conditions 6 and 7 end before the next blank line; and
+    condition 7 cannot start on a paragraph continuation line.
+    """
+    blocks: List[Tuple[int, int]] = []
+    fence_close: Optional["re.Pattern"] = None
+    # True when the previous line finished a block, so the next line may
+    # start anything, including a condition-7 block.
+    at_boundary = True
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        if fence_close is not None:
+            if fence_close.match(line):
+                fence_close = None
+                at_boundary = True
+            i += 1
+            continue
+
+        fence = _FENCE_OPEN_RE.match(line)
+        if fence and (fence.group(1)[0] == "~" or "`" not in line[fence.end():]):
+            fence_close = _fence_close_re(fence.group(1))
+            at_boundary = False
+            i += 1
+            continue
+
+        if not line.strip():
+            at_boundary = True
+            i += 1
+            continue
+
+        is_block, end = _html_block_start(line, at_boundary)
+        if not is_block:
+            at_boundary = bool(_BLOCK_BOUNDARY_RE.match(line))
+            i += 1
+            continue
+
+        first = i
+        if end is None:
+            while i + 1 < len(lines) and lines[i + 1].strip():
+                i += 1
+        else:
+            while not end.search(lines[i]) and i + 1 < len(lines):
+                i += 1
+        blocks.append((first, i))
+        at_boundary = True
+        i += 1
+
+    return blocks
+
+
+class _GitHubMarkdown(markdown2.Markdown):
+    """markdown2 with CommonMark's rules for where a raw HTML block ends."""
+
+    def preprocess(self, text: str) -> str:
+        # Safe mode sanitises HTML in a later stage; blocks hashed here
+        # would skip it, so leave that configuration to markdown2 itself.
+        if "<" in text and not self.safe_mode:
+            text = self._hash_commonmark_html_blocks(text)
+        return super().preprocess(text)
+
+    def _hash_commonmark_html_blocks(self, text: str) -> str:
+        lines = text.split("\n")
+        out: List[str] = []
+        pos = 0
+        for first, last in _find_html_blocks(lines):
+            out.extend(lines[pos:first])
+            # A block may sit inside a list item, indented to the item's
+            # content. markdown2 outdents items before it looks at them, so
+            # the block is stored with that indentation removed, which also
+            # keeps the content of an indented <pre> as it was written.
+            indent = _leading_spaces(lines[first])
+            html = "\n".join(
+                line[min(indent, _leading_spaces(line)):] for line in lines[first:last + 1]
+            )
+            key = markdown2._hash_text(html)
+            self.html_blocks[key] = html
+            # markdown2 recognises a hashed block as a paragraph of its own.
+            # The key itself keeps the indentation so that a block inside a
+            # list item still reads as part of that item; _form_paragraphs
+            # below drops it again once lists have been dealt with.
+            out.extend(["", " " * indent + key, ""])
+            pos = last + 1
+        out.extend(lines[pos:])
+        return "\n".join(out)
+
+    def _form_paragraphs(self, text: str) -> str:
+        # Lists have been processed by the time paragraphs are formed (each
+        # item is outdented and recurses into this method), so a key that is
+        # still indented here stands on its own. Outdent it so the stock
+        # lookup finds it and emits the block without a <p> around it.
+        if self.html_blocks:
+            text = _INDENTED_HASH_KEY_RE.sub(self._outdent_known_key, text)
+        return super()._form_paragraphs(text)
+
+    def _outdent_known_key(self, match: "re.Match") -> str:
+        key = match.group(1)
+        return key if key in self.html_blocks else match.group(0)
+
+
+_INDENTED_HASH_KEY_RE = re.compile(r"^ {1,3}(md5-[0-9a-f]+)[ \t]*$", re.M)
+
+
 class MarkdownRenderer:
     """Render Markdown files to styled HTML."""
 
@@ -393,7 +586,7 @@ class MarkdownRenderer:
         if math:
             source, math_spans = _protect_math(source)
 
-        html_body = str(markdown2.markdown(source, extras=extras))
+        html_body = str(_GitHubMarkdown(extras=extras).convert(source))
 
         if math:
             html_body = _restore_math(html_body, math_spans)
