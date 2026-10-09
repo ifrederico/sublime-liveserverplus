@@ -6,9 +6,10 @@
             const protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
             const address = protocol + window.location.host + '/ws';
             let socket;
-            let reconnectAttempts = 0;
-            const maxReconnectAttempts = 5;
-            const reconnectDelay = 1000;
+            let hasConnected = false;
+            const minReconnectDelay = 1000;
+            const maxReconnectDelay = 10000;
+            let reconnectDelay = minReconnectDelay;
 
             function refreshCSS() {
                 const sheets = [].slice.call(document.getElementsByTagName("link"));
@@ -17,7 +18,7 @@
                     const parent = elem.parentElement || head;
                     const rel = elem.rel;
                     if (elem.href && (typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet")) {
-                        const url = elem.href.replace(/(&|\\?)_cacheOverride=\\d+/, '');
+                        const url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
                         elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
                     }
                 });
@@ -221,17 +222,23 @@
                 };
 
                 socket.onopen = function() {
+                    reconnectDelay = minReconnectDelay;
+                    if (hasConnected) {
+                        // The server went away and came back (e.g. it was
+                        // restarted); files may have changed in between.
+                        console.log('Live reload reconnected, reloading page');
+                        saveScrollPosition();
+                        window.location.reload();
+                        return;
+                    }
+                    hasConnected = true;
                     console.log('Live reload enabled.');
-                    reconnectAttempts = 0;
                 };
 
                 socket.onclose = function(e) {
-                    console.log('Live reload disabled.');
-                    if (reconnectAttempts < maxReconnectAttempts) {
-                        reconnectAttempts++;
-                        console.log(`Reconnecting... Attempt ${reconnectAttempts}`);
-                        setTimeout(connect, reconnectDelay);
-                    }
+                    console.log(`Live reload disconnected. Reconnecting in ${reconnectDelay / 1000}s...`);
+                    setTimeout(connect, reconnectDelay);
+                    reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
                 };
 
                 socket.onerror = function(err) {

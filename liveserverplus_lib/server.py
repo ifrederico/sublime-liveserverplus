@@ -47,7 +47,9 @@ class Server(threading.Thread):
 
         # Initialize managers
 
-        self.connection_manager = ConnectionManager.getInstance()
+        # One per server: a restarted server must not inherit the sockets
+        # (or the connection count) of the one it replaces.
+        self.connection_manager = ConnectionManager()
         self.connection_manager.configure(self.settings)
 
 
@@ -108,7 +110,7 @@ class Server(threading.Thread):
         
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         
-        # Set socket to non-blocking for shutdown
+        # Blocking accept(); stop() wakes it by shutting the socket down
         self.sock.setblocking(True)
         
         # Optimize socket buffer sizes for better throughput
@@ -257,11 +259,16 @@ class Server(threading.Thread):
 
                 if self.connection_manager.addConnection(conn, addr):
                     # Submit to thread pool
-                    self.executor.submit(
-                        self.request_handler.handleConnection,
-                        conn,
-                        addr
-                    )
+                    try:
+                        self.executor.submit(
+                            self.request_handler.handleConnection,
+                            conn,
+                            addr
+                        )
+                    except RuntimeError:
+                        # stop() shut the executor down after accept() returned
+                        self.connection_manager.removeConnection(conn)
+                        conn.close()
                 else:
                     # Connection limit reached
                     conn.close()
@@ -288,10 +295,12 @@ class Server(threading.Thread):
         self.status.update('stopping')
         self._stop_flag = True
 
+        # Stop accepting first so no new connection is handed to the
+        # executor after it has been shut down.
+        self._closeSocket()
         self._shutdownExecutor()
         self._shutdownFileWatcher()
         self._cleanupConnections()
-        self._closeSocket()
 
         # Drop any in-memory buffer snapshots so a subsequent start (or
         # external edit while stopped) cannot be shadowed by stale bytes.
@@ -348,10 +357,11 @@ class Server(threading.Thread):
         info("File watcher shutdown complete")
 
     def _cleanupConnections(self):
-        """Clean up WebSocket and connection threads"""
+        """Disconnect WebSocket clients so browsers see the close and reconnect"""
         info("Closing WebSocket connections...")
+        # Sends each client a close frame and shuts its socket down, which
+        # also ends the worker thread that was reading from it.
         self.websocket.shutdown()
-        self.websocket.clients.clear()
 
         info("Cleaning up connection threads...")
 
@@ -359,6 +369,12 @@ class Server(threading.Thread):
         """Close the main server socket"""
         info("Closing main server socket...")
         if self.sock:
+            # shutdown() wakes the accept() blocked in run(); on Linux close()
+            # alone leaves that thread waiting and the port still listening.
+            try:
+                self.sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             try:
                 self.sock.close()
             except:

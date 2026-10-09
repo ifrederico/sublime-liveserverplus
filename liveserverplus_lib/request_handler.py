@@ -10,10 +10,47 @@ from .file_server import FileServer
 from .websocket import WebSocketHandler
 from .error_pages import ErrorPages
 from .text_utils import inject_before_tag
-from .file_utils import get_file_info
+from .path_utils import relative_to_root
 from .logging import info, error
-from .connection_manager import ConnectionManager
 from .constants import IGNORED_SOCKET_ERRORS
+
+# Limits on what a client can make the handler buffer. Only GET, HEAD and
+# OPTIONS are served, none of which needs a request body.
+MAX_REQUEST_HEAD = 64 * 1024
+MAX_REQUEST_BODY = 1024 * 1024
+
+
+class _HeadOnlyConnection:
+    """Socket stand-in that lets HEAD run the exact GET code path.
+
+    Writes are buffered until the blank line that ends the response headers;
+    that header block goes to the real socket and everything after it (the
+    body, streamed chunks included) is discarded. HEAD therefore reports the
+    same status, Content-Type and Content-Length as GET on every route.
+    """
+
+    def __init__(self, conn):
+        self._conn = conn
+        self._pending = bytearray()
+        self._headers_sent = False
+
+    def sendall(self, data):
+        if self._headers_sent:
+            return None
+        self._pending.extend(data)
+        end = self._pending.find(b"\r\n\r\n")
+        if end != -1:
+            self._headers_sent = True
+            self._conn.sendall(bytes(self._pending[:end + 4]))
+            self._pending = None
+        return None
+
+    def send(self, data):
+        self.sendall(data)
+        return len(data)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
 
 
 class RequestHandler:
@@ -25,7 +62,7 @@ class RequestHandler:
         self.folders = server.folders
         self.websocket = server.websocket
         self.file_server = FileServer(self.settings)
-        self.connection_manager = ConnectionManager.getInstance()
+        self.connection_manager = server.connection_manager
         self._tag_warning_shown = False
         
         # Configure websocket injection behaviour
@@ -54,6 +91,9 @@ class RequestHandler:
                 if b"\r\n\r\n" in data:
                     header_terminated = True
                     break
+                if len(data) > MAX_REQUEST_HEAD:
+                    send_error_response(conn, 431)
+                    return
 
             if not header_terminated or not data:
                 info(f"Empty or malformed data received from {addr}")
@@ -62,6 +102,10 @@ class RequestHandler:
             request = HTTPRequest(bytes(data))
             if not request.is_valid:
                 send_error_response(conn, 400)
+                return
+
+            if request.content_length > MAX_REQUEST_BODY:
+                send_error_response(conn, 413)
                 return
 
             # Read request body if Content-Length indicates more data
@@ -142,8 +186,9 @@ class RequestHandler:
         """Handle GET requests"""
         path = request.path
 
-        # Basic validation for obvious attacks (full validation happens in file_server)
-        if any(pattern in path for pattern in ['..', '//', '\\\\', '\x00']):
+        # Containment is checked where paths are resolved (path_utils), which
+        # rejects ".." segments but still serves names such as "index..html".
+        if '\x00' in path:
             send_error_response(conn, 400, "Bad Request")
             return
             
@@ -155,50 +200,20 @@ class RequestHandler:
         self._send404(conn, path)
         
     def _handleHeadRequest(self, conn, request):
-        """Handle HEAD requests - properly check if resource exists"""
-        path = request.path
-        
-        # Basic validation for obvious attacks (full validation happens in file_server)
-        if any(pattern in path for pattern in ['..', '//', '\\\\', '\x00']):
-            send_error_response(conn, 400, "Bad Request")
-            return
-        
-        # Default to index.html for root
-        if path == '/':
-            path = '/index.html'
-            
-        rel_path = path.lstrip('/')
-        
-        # Try to find the resource using centralized file_info
-        file_info = None
-        for folder in self.folders:
-            full_path = os.path.join(folder, rel_path)
-            info = get_file_info(full_path)
-            if info:
-                file_info = info
-                break
-        
-        if not file_info:
-            # Send 404 for non-existent resources
-            send_error_response(conn, 404)
-            return
-        
-        # Build response with headers only
-        response = HTTPResponse(200)
-        response.set_header('Content-Type', file_info['mime_type'])
-        response.set_header('Content-Length', str(file_info['size']))
-        response.set_header('Accept-Ranges', 'bytes')
-        
-        if self.settings.corsEnabled:
-            response.add_cors_headers()
-            
-        # Send headers only for HEAD request
-        response.send_headers_only(conn)
-        
+        """Handle HEAD requests: the GET response without its body"""
+        self._handleGetRequest(_HeadOnlyConnection(conn), request)
+
     def _send404(self, conn, path):
         """Send 404 error page"""
         try:
-            error_html = ErrorPages.get_404_page(path, self.folders, self.settings)
+            # get_404_page lists folder + path when that is a directory, with
+            # no containment check of its own; only give it the folders the
+            # raw path stays inside, so "/../" cannot list the parent.
+            folders = [
+                folder for folder in self.folders
+                if relative_to_root(os.path.join(folder, path.lstrip('/')), [folder]) is not None
+            ]
+            error_html = ErrorPages.get_404_page(path, folders, self.settings)
             
             response = HTTPResponse(404)
             response.set_header('Content-Type', 'text/html; charset=utf-8')

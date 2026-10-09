@@ -54,8 +54,10 @@ class HTTPResponse:
             'X-Frame-Options': 'SAMEORIGIN',
             'Referrer-Policy': 'same-origin'
         })
-        self.headers['Connection'] = 'keep-alive'
-        self.headers['Keep-Alive'] = 'timeout=5, max=100'
+        # The handler answers one request per connection and then closes it,
+        # so say so; advertising keep-alive made browsers reuse a connection
+        # that was about to be closed and retry the request on a new one.
+        self.headers['Connection'] = 'close'
         return self
         
     def build(self):

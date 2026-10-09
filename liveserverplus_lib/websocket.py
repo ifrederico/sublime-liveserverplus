@@ -4,9 +4,14 @@ import hashlib
 import struct
 import socket
 import threading
+import time
 import os
 import sublime
 from .logging import info, error
+
+# Browsers only send short scroll-sync messages; anything far larger is
+# refused rather than buffered (the length comes from the client).
+MAX_INCOMING_PAYLOAD = 64 * 1024
 
 class WebSocketHandler:
     """Handles WebSocket connections and live reload functionality"""
@@ -30,6 +35,8 @@ class WebSocketHandler:
         # Pre-compute common frames
         self._reload_frame = self._buildWebSocketFrame('reload')
         self._refreshcss_frame = self._buildWebSocketFrame('refreshcss')
+        # Close frame with status 1001 "going away", sent when the server stops
+        self._close_frame = bytes([0x88, 0x02]) + struct.pack('>H', 1001)
         self._pending_timer = None
         self._pending_message = None
 
@@ -244,6 +251,10 @@ class WebSocketHandler:
                     return None
                 payload_len = struct.unpack('>Q', extended)[0]
 
+            if payload_len > MAX_INCOMING_PAYLOAD:
+                info(f"Closing WebSocket client that sent a {payload_len}-byte frame")
+                return None
+
             mask = b''
             if masked:
                 mask = self._recv_exact(conn, 4)
@@ -310,9 +321,46 @@ class WebSocketHandler:
         frame.extend(payload)
         return bytes(frame)
 
-    def shutdown(self):
+    def shutdown(self, timeout=1.0):
+        """Cancel any pending reload and disconnect every client.
+
+        Each client is sent a close frame and its socket is shut down, which
+        wakes the worker thread blocked reading it; that thread unregisters
+        the client and closes the socket. Sockets still registered after
+        ``timeout`` seconds are closed here instead.
+        """
         with self._timer_lock:
             if self._pending_timer:
                 self._pending_timer.cancel()
                 self._pending_timer = None
             self._pending_message = None
+
+        with self._lock:
+            clients = list(self.clients)
+
+        for client in clients:
+            try:
+                client.settimeout(0.5)
+                client.sendall(self._close_frame)
+            except (socket.error, OSError):
+                pass
+            try:
+                client.shutdown(socket.SHUT_RDWR)
+            except (socket.error, OSError):
+                pass
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with self._lock:
+                if not self.clients:
+                    break
+            time.sleep(0.01)
+
+        with self._lock:
+            leftovers = list(self.clients)
+            self.clients.clear()
+        for client in leftovers:
+            try:
+                client.close()
+            except (socket.error, OSError):
+                pass
