@@ -1,5 +1,6 @@
 # liveserverplus_lib/path_utils.py
 """Centralized path manipulation utilities for security and consistency"""
+import ntpath
 import os
 import pathlib
 from pathlib import PurePath, PureWindowsPath
@@ -27,22 +28,47 @@ def validate_and_secure_path(base_folder, requested_path):
         # Unquote URL encoding
         clean_path = unquote(requested_path)
         
+        # Step 2: Clean and normalize the path. "\" is a separator on
+        # Windows, so normalize it before anything else: stripping "/" and
+        # "\" one after the other turned "\/\host\share" into "/\host\share",
+        # which Windows joins as the UNC path \\host\share.
+        clean_path = clean_path.replace('\\', '/')
+        if clean_path.startswith('//'):
+            info(f"Suspicious path pattern detected: {requested_path}")
+            return None
+        clean_path = clean_path.lstrip('/')
+
         # Reject path traversal segments without rejecting valid names such
-        # as "index..html". The resolved-path containment check below remains
-        # the final guard.
-        path_parts = clean_path.replace('\\', '/').split('/')
-        if '\x00' in clean_path or any(part == '..' for part in path_parts):
+        # as "index..html", and anything that would replace base_folder in
+        # the join instead of extending it: a drive ("C:"), a UNC prefix or
+        # an absolute path.
+        path_parts = clean_path.split('/')
+        if ('\x00' in clean_path
+                or any(part == '..' for part in path_parts)
+                or ':' in path_parts[0]
+                or ntpath.splitdrive(clean_path)[0]
+                or os.path.isabs(clean_path)
+                or ntpath.isabs(clean_path)):
             info(f"Suspicious path pattern detected: {requested_path}")
             return None
         
-        # Step 2: Clean and normalize the path
-        # Remove leading slashes/backslashes
-        clean_path = clean_path.lstrip('/').lstrip('\\')
+        # Lexical containment before anything touches the filesystem:
+        # resolve() opens the path, and on Windows opening a UNC path makes
+        # an SMB connection that leaks the user's NTLM hash.
+        try:
+            base_norm = os.path.normpath(os.path.abspath(base_folder))
+            joined = os.path.normpath(os.path.join(base_norm, clean_path))
+            common = os.path.commonpath([base_norm, joined])
+        except ValueError:  # different drives on Windows
+            common = None
+        if common is None or os.path.normcase(common) != os.path.normcase(base_norm):
+            info(f"Path escape attempt: {requested_path} is outside {base_folder}")
+            return None
         
-        # Step 3: Join with base folder and resolve
+        # Step 3: Resolve; symlinks can still lead outside base_folder
         try:
             base_path = pathlib.Path(base_folder).resolve()
-            full_path = pathlib.Path(base_folder, clean_path).resolve()
+            full_path = pathlib.Path(joined).resolve()
         except Exception as e:
             info(f"Path resolution failed: {e}")
             return None
@@ -112,8 +138,27 @@ def resolve_served_path(folder, rel_path):
 
 
 def relative_to_root(file_path, roots):
-    """Return file_path relative to the first containing root, or None."""
+    """Return file_path relative to the first containing root, or None.
+
+    ``file_path`` is only resolved when it is on a drive or share that one
+    of the roots is on: resolve() opens the path, and on Windows opening a
+    UNC path (say one built from a request) makes an SMB connection.
+    """
     if not file_path:
+        return None
+
+    resolved_roots = []
+    drives = set()
+    for root in roots or []:
+        try:
+            resolved_root = pathlib.Path(root).resolve()
+        except Exception as e:
+            error(f"Error checking path containment for {file_path}: {e}")
+            continue
+        resolved_roots.append(resolved_root)
+        drives.add(os.path.normcase(os.path.splitdrive(root)[0]))
+        drives.add(os.path.normcase(os.path.splitdrive(str(resolved_root))[0]))
+    if os.path.normcase(os.path.splitdrive(file_path)[0]) not in drives:
         return None
 
     try:
@@ -122,9 +167,8 @@ def relative_to_root(file_path, roots):
         error(f"Error resolving file path {file_path}: {e}")
         return None
 
-    for root in roots or []:
+    for resolved_root in resolved_roots:
         try:
-            resolved_root = pathlib.Path(root).resolve()
             rel_path = resolved_file.relative_to(resolved_root)
             rel_path_str = str(rel_path)
             return '' if rel_path_str == '.' else rel_path_str

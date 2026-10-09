@@ -1,27 +1,48 @@
 """File serving: directory indexes, the dotfile policy (ignoreFiles is
-watch-only), uncompressed responses, streaming, and the cost of 404
-suggestions."""
+watch-only), Windows path containment, uncompressed responses, streaming,
+and the cost of 404 suggestions."""
 import itertools
+import ntpath
 import os
 import sys
 import tempfile
 import types
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest import mock
+from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _sublime_stub import fake_sublime  # noqa: E402,F401  (installs the stub)
 
 from liveserverplus_lib import file_server as file_server_module  # noqa: E402
+from liveserverplus_lib import path_utils  # noqa: E402
 from liveserverplus_lib import text_utils  # noqa: E402
 from liveserverplus_lib.error_pages import ErrorPages  # noqa: E402
 from liveserverplus_lib.file_server import FileServer  # noqa: E402
 from liveserverplus_lib.markdown_renderer import ASSET_URL_PREFIX  # noqa: E402
-from liveserverplus_lib.path_utils import has_hidden_segment, is_refused_path  # noqa: E402
+from liveserverplus_lib.path_utils import (  # noqa: E402
+    has_hidden_segment, is_refused_path, relative_to_root, validate_and_secure_path)
 from liveserverplus_lib.settings import DEFAULT_ALLOWED_FILE_TYPES, DEFAULT_SETTINGS  # noqa: E402
 
 RELOAD_MARKER = b"<script>/*live-reload*/</script>"
+
+WINDOWS_ROOT = r"C:\Users\me\site"
+# Request paths that Windows would join into a UNC share or another drive.
+# Opening a UNC path makes an SMB connection that leaks the NTLM hash.
+WINDOWS_PAYLOADS = (
+    r"/%5C/%5Cattacker%5Cshare%5Cx",
+    r"/%5C%2F%5Cattacker%5Cshare",
+    r"/%5C%5C%5Cattacker%5Cshare",
+    r"/\/\attacker\share\x",
+    r"/\\attacker\share\x",
+    r"/%255C/%255Cattacker%255Cshare",
+    r"/%5C%5C%3F%5CUNC%5Cattacker%5Cshare%5Cx",
+    r"/%2F%2Fattacker%2Fshare",
+    r"/C:/Windows/win.ini",
+    r"/C:%5CWindows%5Cwin.ini",
+    r"/D:secret.txt",
+)
 
 
 def make_settings(**overrides):
@@ -127,10 +148,31 @@ class DirectoryIndexTests(ServingTestCase):
     def test_redirect_location_can_never_leave_the_server(self):
         """A Location starting with // would send the browser to another host."""
         (self.root / "evil.com").mkdir()
-        for url in ("/%2F%2Fevil.com", "/%5Cevil.com"):
+        served, conn = self.get("/%5Cevil.com")
+        self.assertTrue(served)
+        self.assertEqual(conn.response()[1]["location"], "/evil.com/")
+        # Two leading separators are refused before any redirect is built.
+        for url in ("/%2F%2Fevil.com", "/%5C%5Cevil.com", "/%2F%5Cevil.com"):
             served, conn = self.get(url)
-            self.assertTrue(served)
-            self.assertEqual(conn.response()[1]["location"], "/evil.com/")
+            self.assertFalse(served, url)
+            self.assertEqual(conn.data, b"", url)
+
+    def test_redirect_keeps_the_query_string(self):
+        (self.root / "docs").mkdir()
+        conn = Connection()
+        served = self.server.serveFile(conn, "/docs", [str(self.root)], query_string="x=1&y=%20z")
+        self.assertTrue(served)
+        self.assertEqual(conn.response()[1]["location"], "/docs/?x=1&y=%20z")
+
+    def test_query_string_cannot_inject_a_header(self):
+        (self.root / "docs").mkdir()
+        conn = Connection()
+        served = self.server.serveFile(
+            conn, "/docs", [str(self.root)], query_string="a=1\r\nSet-Cookie: s=1\x00\x7f\xe9")
+        self.assertTrue(served)
+        self.assertNotIn(b"\r\nSet-Cookie", conn.data)
+        self.assertEqual(conn.response()[1]["location"],
+                         "/docs/?a=1%0D%0ASet-Cookie:%20s=1%00%7F%C3%A9")
 
     def test_root_prefers_an_index_from_any_folder_over_a_listing(self):
         second = self.tmp / "second"
@@ -349,10 +391,88 @@ class NotFoundSuggestionTests(ServingTestCase):
             text_utils.find_similar_files("/f.html", [str(self.root)], time_limit=0.1)
         self.assertEqual(compare.call_count, 1)
 
+    def count_entries_visited(self, **kwargs):
+        """Run the walk over 50 ignored .jpg files and count entries checked."""
+        for i in range(50):
+            self.write("photos/img%02d.jpg" % i)
+        real_matches = text_utils.matches_ignore
+        with mock.patch.object(text_utils, "matches_ignore", side_effect=real_matches) as check, \
+                mock.patch.object(text_utils, "calculate_similarity", return_value=1.0) as compare:
+            text_utils.find_similar_files("/indx.html", [str(self.root)],
+                                          ignore_patterns=["**/*.jpg"], **kwargs)
+        self.assertEqual(compare.call_count, 0)
+        return check.call_count
+
+    def test_skipped_entries_count_against_the_time_limit(self):
+        """Before, the clock was only read for files that were compared."""
+        clock = itertools.count(0.0, 0.01)
+        fake_time = types.SimpleNamespace(monotonic=lambda: next(clock))
+        with mock.patch.object(text_utils, "time", fake_time):
+            visited = self.count_entries_visited(time_limit=0.1)
+        self.assertLess(visited, 15)
+
+    def test_skipped_entries_count_against_max_entries(self):
+        # One entry past the cap is produced before the loop sees the cap.
+        self.assertLessEqual(self.count_entries_visited(max_entries=10), 11)
+
     def test_requested_path_is_escaped(self):
         page = ErrorPages.get_404_page("/<img src=x onerror=alert(1)>", [str(self.root)], self.settings)
         self.assertNotIn("<img", page)
         self.assertIn("&lt;img", page)
+
+
+class _WindowsPath(PureWindowsPath):
+    """Windows path whose resolve() records its argument instead of opening it."""
+
+    resolved = []
+
+    def resolve(self, strict=False):
+        _WindowsPath.resolved.append(str(self))
+        return self
+
+
+class WindowsPathTests(unittest.TestCase):
+    """path_utils with Windows path semantics, on any OS."""
+
+    def setUp(self):
+        _WindowsPath.resolved = []
+        for patcher in (
+            mock.patch.object(path_utils, "os", types.SimpleNamespace(path=ntpath)),
+            mock.patch.object(path_utils, "pathlib", types.SimpleNamespace(Path=_WindowsPath)),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def assertOnlyLocalPathsResolved(self):
+        self.assertTrue(_WindowsPath.resolved)
+        for path in _WindowsPath.resolved:
+            self.assertEqual(ntpath.splitdrive(path)[0].lower(), "c:", path)
+
+    def test_payloads_are_rejected_before_resolve(self):
+        for raw in WINDOWS_PAYLOADS:
+            rel_path = unquote(raw.lstrip("/"))  # as FileServer.serveFile does
+            self.assertIsNone(validate_and_secure_path(WINDOWS_ROOT, rel_path), raw)
+        validate_and_secure_path(WINDOWS_ROOT, "index.html")
+        self.assertOnlyLocalPathsResolved()
+
+    def test_ordinary_paths_still_resolve_under_the_root(self):
+        self.assertEqual(validate_and_secure_path(WINDOWS_ROOT, "docs/index.html"),
+                         WINDOWS_ROOT + r"\docs\index.html")
+        self.assertEqual(validate_and_secure_path(WINDOWS_ROOT, "\\docs\\a b.png"),
+                         WINDOWS_ROOT + r"\docs\a b.png")
+        self.assertOnlyLocalPathsResolved()
+
+    def test_relative_to_root_never_resolves_another_drive_or_share(self):
+        """request_handler._send404 joins the raw request path onto each folder."""
+        for raw in WINDOWS_PAYLOADS:
+            joined = ntpath.join(WINDOWS_ROOT, raw.lstrip("/"))
+            if ntpath.splitdrive(joined)[0].lower() != "c:":
+                self.assertIsNone(relative_to_root(joined, [WINDOWS_ROOT]), raw)
+            else:  # percent-encoded payloads stay a local name under the root
+                relative_to_root(joined, [WINDOWS_ROOT])
+        self.assertEqual(relative_to_root(WINDOWS_ROOT + r"\docs\a.html", [WINDOWS_ROOT]),
+                         r"docs\a.html")
+        self.assertOnlyLocalPathsResolved()
 
 
 class PolicyHelperTests(unittest.TestCase):

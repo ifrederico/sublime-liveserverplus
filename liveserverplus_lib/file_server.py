@@ -1,6 +1,7 @@
 # liveserverplus_lib/file_server.py
 """File serving utilities"""
 import os
+import string
 from urllib.parse import quote, unquote
 
 import sublime
@@ -55,7 +56,7 @@ class FileServer:
             return None
         return BufferCache.getInstance().get(file_path)
         
-    def serveFile(self, conn, path, folders):
+    def serveFile(self, conn, path, folders, query_string=''):
         """
         Main entry point for serving files.
         Returns True if a response was sent, False when nothing may be
@@ -64,7 +65,8 @@ class FileServer:
         Dotfiles and anything inside a dot-directory are treated as
         missing; ``ignoreFiles`` does not affect serving. A directory
         serves its index.html / index.htm from the first folder that has
-        one, otherwise a listing.
+        one, otherwise a listing. ``query_string`` is the raw text after
+        "?", kept when a directory is redirected to its trailing slash.
         """
         # Vendored preview assets are served from the package, not the
         # user's folders, so they are resolved before anything else.
@@ -86,6 +88,11 @@ class FileServer:
                     location = '/' + quote(rel_path.lstrip('/\\'), safe='/')
                     if not location.endswith('/'):
                         location += '/'
+                    if query_string:
+                        # Keep the query as sent; percent-encode anything
+                        # outside printable ASCII so CR/LF cannot end the
+                        # header early.
+                        location += '?' + quote(query_string, safe=string.punctuation)
                     return create_redirect_response(location, permanent=True).send(conn)
                 index_path = find_index_file(target)
                 if index_path:

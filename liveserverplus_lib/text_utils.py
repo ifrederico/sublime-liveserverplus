@@ -6,7 +6,6 @@ import time
 from typing import Iterable, Iterator, List, Tuple, Optional
 
 from .ignore import matches_ignore
-from .path_utils import is_refused_path
 
 def calculate_similarity(a: str, b: str) -> float:
     """
@@ -47,54 +46,46 @@ def calculate_similarity(a: str, b: str) -> float:
     return 1 - (distances[-1] / max(len(a), len(b)))
 
 
-def _is_skipped(path: str, root: str, ignore_patterns: Iterable[str]) -> bool:
-    """Return True for paths a suggestion must not come from.
+def _walk_entries(directory: str, ignore_dirs: Iterable[str],
+                  ignore_patterns: Iterable[str]) -> Iterator[Tuple[str, bool]]:
+    """Yield ``(path, wanted)`` for every entry visited under ``directory``.
 
-    That is anything the server refuses (dotfiles, dot-directories) and
-    anything matching ``ignore_patterns``: those are served, but
-    suggestions from node_modules and the like are noise.
+    ``wanted`` is True only for files worth suggesting. Dotfiles and
+    dot-directories are refused by the server; ``ignore_dirs`` names and
+    ``ignore_patterns`` matches are served, but suggestions from
+    node_modules and the like are noise. Skipped directories are pruned so
+    ``os.walk`` never enters them. Patterns are matched against the path
+    relative to ``directory``, as the file watcher does.
     """
-    if is_refused_path(path, root):
-        return True
-    if not ignore_patterns or not matches_ignore(path, ignore_patterns):
-        return False
-    # When the folder itself lies inside an ignored directory (say an
-    # examples folder under node_modules), only the part below it counts.
-    if matches_ignore(root, ignore_patterns):
-        return matches_ignore(os.path.relpath(path, root), ignore_patterns)
-    return True
-
-
-def _walk_candidate_files(directory: str, ignore_dirs: Iterable[str],
-                          ignore_patterns: Iterable[str]) -> Iterator[str]:
-    """Yield the files under ``directory`` worth suggesting.
-
-    Skipped directories (dot-directories, ``ignore_dirs`` names, paths
-    matching ``ignore_patterns``) are pruned before ``os.walk`` enters them.
-    """
+    prefix_len = len(os.path.join(directory, ''))
     for root, dirs, files in os.walk(directory):
-        dirs[:] = [
-            name for name in dirs
-            if name not in ignore_dirs
-            and not _is_skipped(os.path.join(root, name), directory, ignore_patterns)
-        ]
-        for filename in files:
-            file_path = os.path.join(root, filename)
-            if not _is_skipped(file_path, directory, ignore_patterns):
-                yield file_path
+        kept = []
+        for name in dirs:
+            path = os.path.join(root, name)
+            if not (name.startswith('.') or name in ignore_dirs
+                    or matches_ignore(path[prefix_len:], ignore_patterns)):
+                kept.append(name)
+            yield path, False
+        dirs[:] = kept
+        for name in files:
+            path = os.path.join(root, name)
+            yield path, not (name.startswith('.')
+                             or matches_ignore(path[prefix_len:], ignore_patterns))
 
 
 def find_similar_files(search_term: str, directories: List[str], 
                       threshold: float = 0.5, max_results: int = 5,
                       ignore_dirs: Iterable[str] = (), ignore_patterns: Iterable[str] = (),
-                      max_files: int = 2000, time_limit: float = 0.1) -> List[Tuple[str, float]]:
+                      max_files: int = 2000, max_entries: int = 20000,
+                      time_limit: float = 0.1) -> List[Tuple[str, float]]:
     """
     Find files with names similar to the search term.
 
     Dotfiles, dot-directories, ``ignore_dirs`` and ``ignore_patterns``
-    matches are skipped. The walk stops after ``max_files`` files or
-    ``time_limit`` seconds, whichever comes first, so a 404 stays cheap in
-    a large project.
+    matches are skipped. The walk stops after comparing ``max_files``
+    names, visiting ``max_entries`` entries (skipped ones included) or
+    spending ``time_limit`` seconds, whichever comes first, so a 404 stays
+    cheap in a large project.
     
     Args:
         search_term: Term to search for
@@ -104,6 +95,7 @@ def find_similar_files(search_term: str, directories: List[str],
         ignore_dirs: Directory names never walked into
         ignore_patterns: ``ignoreFiles`` glob patterns
         max_files: Maximum number of file names compared
+        max_entries: Maximum number of files and directories visited
         time_limit: Maximum seconds spent walking
         
     Returns:
@@ -113,15 +105,22 @@ def find_similar_files(search_term: str, directories: List[str],
     search_name = os.path.basename(search_term).lower()
     ignore_dirs = set(ignore_dirs)
     deadline = time.monotonic() + time_limit
-    candidates = (
-        (directory, file_path)
+    compared = 0
+    entries = (
+        (directory, file_path, wanted)
         for directory in directories
-        for file_path in _walk_candidate_files(directory, ignore_dirs, ignore_patterns)
+        for file_path, wanted in _walk_entries(directory, ignore_dirs, ignore_patterns)
     )
     
-    for checked, (directory, file_path) in enumerate(candidates):
-        if checked >= max_files or time.monotonic() > deadline:
+    # The budget is checked for every entry, skipped ones too: 40,000
+    # ignored images cost time even though none of them is compared.
+    for visited, (directory, file_path, wanted) in enumerate(entries):
+        if (visited >= max_entries or compared >= max_files
+                or time.monotonic() > deadline):
             break
+        if not wanted:
+            continue
+        compared += 1
         similarity = calculate_similarity(search_name, os.path.basename(file_path).lower())
         if similarity >= threshold:
             rel_path = os.path.relpath(file_path, directory)
