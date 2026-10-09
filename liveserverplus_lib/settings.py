@@ -50,6 +50,15 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     'markdownMermaid': False,
 }
 
+# Keys that are only read when the server starts (socket, thread pool, file
+# watcher, script injection, ignore rules). The running server keeps the
+# values it started with; ServerManager restarts it when one of these changes
+# in the settings file. Every other key is re-read while the server runs.
+RESTART_KEYS = (
+    'port', 'host', 'useLocalIp', 'liveReload', 'maxThreads',
+    'maxWatchedDirs', 'ignoreFiles', 'ignoreDirs', 'useWebExt',
+)
+
 
 def _deep_merge(target: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
     """Deep merge dictionary values without mutating defaults."""
@@ -61,6 +70,11 @@ def _deep_merge(target: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, 
     return target
 
 
+def changed_keys(old: Dict[str, Any], new: Dict[str, Any], keys) -> List[str]:
+    """Return the ``keys`` whose value differs between ``old`` and ``new``."""
+    return [key for key in keys if old.get(key) != new.get(key)]
+
+
 class ServerSettings:
     """Manages LiveServerPlus settings with project overrides."""
 
@@ -68,19 +82,46 @@ class ServerSettings:
 
     def __init__(self) -> None:
         self._settings: Optional[sublime.Settings] = None
+        self._project_settings: Dict[str, Any] = {}
         self._config: Dict[str, Any] = {}
         self._allowed_types_cache: Optional[set[str]] = None
         self._ephemeral_port_cache: Optional[int] = None
         self.load_settings()
 
     def load_settings(self) -> None:
-        """Load global and project-level settings."""
-        if self._settings:
-            self._settings.clear_on_change('live_server_settings')
+        """Load global and project-level settings.
 
+        The result is a snapshot: it does not follow later edits of the
+        settings file. ``refresh()`` re-reads the keys that may change while
+        the server runs.
+        """
         self._settings = sublime.load_settings('LiveServerPlus.sublime-settings')
-        self._settings.add_on_change('live_server_settings', self.on_settings_change)
 
+        window = sublime.active_window()
+        project_data = (window.project_data() or {}) if window else {}
+        project_settings = project_data.get('liveserverplus')
+        self._project_settings = copy.deepcopy(project_settings) if isinstance(project_settings, dict) else {}
+
+        self._config = self._read_config()
+        self._allowed_types_cache = None
+        self._ephemeral_port_cache = None
+
+    def refresh(self) -> None:
+        """Re-read the settings file, keeping the values of ``RESTART_KEYS``.
+
+        Project overrides are the ones captured when the server started.
+        """
+        config = self._read_config()
+        for key in RESTART_KEYS:
+            config[key] = self._config.get(key)
+        self._config = config
+
+    def changed_restart_keys(self) -> List[str]:
+        """Return the ``RESTART_KEYS`` whose configured value differs from the snapshot."""
+        return changed_keys(self._config, self._read_config(), RESTART_KEYS)
+
+    def _read_config(self) -> Dict[str, Any]:
+        """Merge defaults, the settings file and the captured project overrides."""
         base_config = copy.deepcopy(DEFAULT_SETTINGS)
 
         # Apply user overrides from the global settings file
@@ -97,28 +138,17 @@ class ServerSettings:
             base_config['ignoreDirs'] = legacy_ignore_dirs
 
         # Apply project specific overrides ("liveserverplus")
-        window = sublime.active_window()
-        if window:
-            project_data = window.project_data() or {}
-            project_settings = project_data.get('liveserverplus')
-            if isinstance(project_settings, dict):
-                for key, value in project_settings.items():
-                    if key not in DEFAULT_SETTINGS:
-                        if key == 'ignore_dirs':
-                            base_config['ignoreDirs'] = value
-                        continue
-                    if isinstance(value, dict) and isinstance(base_config.get(key), dict):
-                        base_config[key] = _deep_merge(base_config[key], value)
-                    else:
-                        base_config[key] = value
+        for key, value in self._project_settings.items():
+            if key not in DEFAULT_SETTINGS:
+                if key == 'ignore_dirs':
+                    base_config['ignoreDirs'] = value
+                continue
+            if isinstance(value, dict) and isinstance(base_config.get(key), dict):
+                base_config[key] = _deep_merge(base_config[key], value)
+            else:
+                base_config[key] = value
 
-        self._config = base_config
-        self._allowed_types_cache = None
-        self._ephemeral_port_cache = ServerSettings._global_ephemeral_port
-
-    def on_settings_change(self) -> None:
-        """Reload settings when LiveServerPlus.sublime-settings updates."""
-        self.load_settings()
+        return base_config
 
     # ------------------------------------------------------------------
     # Basic server configuration
@@ -134,12 +164,11 @@ class ServerSettings:
 
         configured = int(self._config.get('port', DEFAULT_SETTINGS['port']))
         if configured == 0:
-            if self._ephemeral_port_cache is not None:
-                configured = self._ephemeral_port_cache
-            else:
-                configured = getFreePort(49152, 65535) or 8080
+            # Keep the same random port across restarts so open tabs reconnect.
+            configured = (ServerSettings._global_ephemeral_port
+                          or getFreePort(49152, 65535) or 8080)
+            ServerSettings._global_ephemeral_port = configured
         self._ephemeral_port_cache = configured
-        ServerSettings._global_ephemeral_port = configured
         return configured
 
     @property
@@ -164,10 +193,6 @@ class ServerSettings:
         if not isinstance(patterns, list):
             return []
         return [str(item) for item in patterns]
-
-    @property
-    def ignoreExtensions(self) -> List[str]:
-        return []
 
     @property
     def ignoreDirs(self) -> List[str]:

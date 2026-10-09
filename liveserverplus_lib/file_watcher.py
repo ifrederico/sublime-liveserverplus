@@ -2,12 +2,12 @@ import errno
 import os
 import threading
 import time
-from pathlib import PurePosixPath
 
 # Import Watchdog from the vendored location
 from .vendor.watchdog.observers import Observer
 from .vendor.watchdog.observers.polling import PollingObserver
 from .vendor.watchdog.events import FileSystemEventHandler
+from .ignore import matches_ignore
 from .logging import info, error
 
 class FileWatcher(threading.Thread):
@@ -21,7 +21,7 @@ class FileWatcher(threading.Thread):
         self._stop_event = threading.Event()
         self.observer = None
         self.event_handler = WatchdogEventHandler(self)
-        self._ignore_patterns = [self._normalize_pattern(p) for p in self.settings.ignorePatterns]
+        self._ignore_patterns = list(self.settings.ignorePatterns)
         
         # Set a limit to avoid too many open files
         self._max_directories = getattr(self.settings, 'maxWatchedDirs', 50)
@@ -64,23 +64,8 @@ class FileWatcher(threading.Thread):
             else:
                 raise
 
-    def _normalize_pattern(self, pattern):
-        if not pattern:
-            return ''
-        normalized = pattern.replace('\\', '/').strip()
-        return normalized or ''
-
     def _matches_ignore(self, path):
-        if not path or not self._ignore_patterns:
-            return False
-        normalized_path = os.path.normpath(path).replace('\\', '/')
-        path_obj = PurePosixPath(normalized_path)
-        for pattern in self._ignore_patterns:
-            if not pattern:
-                continue
-            if path_obj.match(pattern):
-                return True
-        return False
+        return matches_ignore(path, self._ignore_patterns)
 
     def _setup_observers(self, observer):
         """Set up Watchdog observers for each folder"""
@@ -124,7 +109,11 @@ class FileWatcher(threading.Thread):
                 
                 for root, dirs, files in os.walk(folder):
                     # Filter out ignored directories
-                    dirs[:] = [d for d in dirs if d not in self.settings.ignoreDirs]
+                    dirs[:] = [
+                        d for d in dirs
+                        if d not in self.settings.ignoreDirs
+                        and not self._matches_ignore(os.path.join(root, d))
+                    ]
                     
                     # Check if this directory has any web files
                     has_web_files = any(f.endswith(tuple(self.settings.allowedFileTypes)) for f in files)

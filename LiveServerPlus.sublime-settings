@@ -1,5 +1,11 @@
 // LiveServerPlus.sublime-settings
 {
+    // Changes apply as soon as you save this file; no manual restart needed.
+    // While the server is running, changing "host", "port", "useLocalIp",
+    // "useWebExt", "liveReload", "ignoreFiles", "ignoreDirs", "maxThreads" or
+    // "maxWatchedDirs" restarts it automatically. All other settings take
+    // effect immediately without a restart.
+
     // ==========================================
     // Basic Server Settings
     // ==========================================
@@ -47,7 +53,11 @@
     // The dev server serves the in-progress buffer snapshot, so your file is not saved until you save it.
     "wait": 100,
 
-    // Glob patterns ignored by both Watchdog and Sublime live reload.
+    // Paths to ignore, using .gitignore-style globs: "**" spans any number of
+    // directories, "*" stays within one path segment, and a bare name such as
+    // "dist" also matches everything inside a directory of that name.
+    // Matching files are not watched, do not trigger Sublime live reload, and
+    // are not served (404, hidden from directory listings).
     "ignoreFiles": [
         "**/node_modules/**",
         "**/.git/**",

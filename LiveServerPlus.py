@@ -5,7 +5,6 @@ import time
 import json
 import sublime
 import sublime_plugin
-from pathlib import PurePosixPath
 
 # Ignore fsevents
 import warnings
@@ -22,6 +21,9 @@ from .liveserverplus_lib.logging import info, error
 from .liveserverplus_lib import logging as lsp_logging
 from .liveserverplus_lib.path_utils import normalize_url_path, join_base_and_path, relative_to_root
 from .liveserverplus_lib.buffer_cache import BufferCache
+from .liveserverplus_lib.ignore import matches_ignore
+from .liveserverplus_lib.settings import DEFAULT_SETTINGS
+from .liveserverplus_lib.status import ServerStatus
 from .ServerManager import ServerManager
 
 from .liveserverplus_lib.qr_utils import (get_server_urls, generate_qr_code_base64, HAS_QR_SUPPORT, get_local_ip)
@@ -86,21 +88,6 @@ def _status_message(message):
     if _info_messages_enabled():
         sublime.status_message(message)
 
-
-def _matches_ignore_patterns(file_path, patterns):
-    if not patterns:
-        return False
-
-    normalized_path = os.path.normpath(file_path).replace('\\', '/')
-    path_obj = PurePosixPath(normalized_path)
-
-    for pattern in patterns:
-        if not pattern:
-            continue
-        normalized_pattern = pattern.replace('\\', '/')
-        if path_obj.match(normalized_pattern):
-            return True
-    return False
 
 class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
     """Show QR code for mobile device access"""
@@ -174,17 +161,16 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
         settings.set("useLocalIp", True)
         sublime.save_settings("LiveServerPlus.sublime-settings")
 
-        manager.stop()
-
-        def restart_and_show_qr():
-            if manager.start(folders):
-                if target_path and server.settings.openBrowser:
+        def show_qr_after_restart(success):
+            if success:
+                new_server = manager.getServer()
+                if target_path and new_server and new_server.settings.openBrowser:
                     sublime.set_timeout(lambda: manager.openInBrowser(target_path), 150)
                 sublime.set_timeout(lambda: self.run(), 300)
             else:
                 sublime.error_message("[LiveServerPlus] Failed to restart server with LAN access enabled.")
 
-        sublime.set_timeout(restart_and_show_qr, 600)
+        manager.restart(folders, on_done=show_qr_after_restart)
 
     def _current_url_path(self, manager, server):
         view = self.window.active_view()
@@ -432,14 +418,14 @@ class LiveServerChangePortCommand(sublime_plugin.WindowCommand):
         manager = ServerManager.getInstance()
         
         # Get current port
-        current_port = "8080"
+        current_port = str(DEFAULT_SETTINGS['port'])
         if manager.isRunning():
             server = manager.getServer()
             if server:
                 current_port = str(server.settings.port)
         else:
             settings = sublime.load_settings("LiveServerPlus.sublime-settings")
-            current_port = str(settings.get('port', 8080))
+            current_port = str(settings.get('port', DEFAULT_SETTINGS['port']))
         
         # Show input panel
         self.window.show_input_panel(
@@ -475,8 +461,7 @@ class LiveServerChangePortCommand(sublime_plugin.WindowCommand):
         manager = ServerManager.getInstance()
         if manager.isRunning():
             folders = manager.getServer().folders
-            manager.stop()
-            sublime.set_timeout(lambda: manager.start(folders), 100)
+            manager.restart(folders)
             _status_message(f"Restarting server on port {port}...")
         else:
             _status_message(f"Port changed to {port}")
@@ -551,18 +536,17 @@ class LiveServerSetLanAccessCommand(sublime_plugin.WindowCommand):
             if hasattr(server, 'status'):
                 server.status.update('restarting')
 
-            manager.stop()
-
-            def restart():
-                if manager.start(folders):
+            def on_restarted(success):
+                if success:
                     message = "LAN access enabled" if enabled else "LAN access disabled"
                     _status_message(message)
-                    if target_path and server.settings.openBrowser:
+                    new_server = manager.getServer()
+                    if target_path and new_server and new_server.settings.openBrowser:
                         sublime.set_timeout(lambda: manager.openInBrowser(target_path), 200)
                 else:
                     sublime.error_message("[LiveServerPlus] Failed to restart server after changing LAN access.")
 
-            sublime.set_timeout(restart, 600)
+            manager.restart(folders, on_done=on_restarted)
         else:
             _status_message("LAN access enabled" if enabled else "LAN access disabled")
 
@@ -613,10 +597,8 @@ class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
             if server and hasattr(server, 'status'):
                 server.status.update('restarting')
 
-            manager.stop()
-
-            def restart():
-                if manager.start(folders):
+            def on_restarted(success):
+                if success:
                     new_server = manager.getServer()
                     if (target_path and target_path != '/' and new_server
                             and new_server.settings.openBrowser):
@@ -624,7 +606,7 @@ class LiveServerSetLiveReloadCommand(sublime_plugin.WindowCommand):
                 else:
                     sublime.error_message("[LiveServerPlus] Failed to restart server after toggling live reload.")
 
-            sublime.set_timeout(restart, 600)
+            manager.restart(folders, on_done=on_restarted)
 
     def _resolve_current_url_path(self, manager, server):
         view = self.window.active_view()
@@ -667,14 +649,8 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
     def _should_trigger(self, manager, server, file_path):
         if not file_path:
             return False
-        if _matches_ignore_patterns(file_path, server.settings.ignorePatterns):
+        if matches_ignore(file_path, server.settings.ignorePatterns):
             return False
-
-        ignore_exts = getattr(server.settings, 'ignoreExtensions', [])
-        lower_path = file_path.lower()
-        for ext in ignore_exts:
-            if lower_path.endswith(ext.lower()):
-                return False
 
         return manager.isFileAllowed(file_path)
 
@@ -751,6 +727,18 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
         if file_path:
             BufferCache.getInstance().evict(file_path)
 
+class LiveServerStatusListener(sublime_plugin.EventListener):
+    """Shows the server status on views opened after it last changed."""
+
+    def on_activated(self, view):
+        ServerStatus.apply_to_view(view)
+
+    def on_load(self, view):
+        ServerStatus.apply_to_view(view)
+
+    def on_new(self, view):
+        ServerStatus.apply_to_view(view)
+
 class LiveServerContextProvider(sublime_plugin.EventListener):
     """Provides context for key bindings"""
     
@@ -769,35 +757,80 @@ class LiveServerContextProvider(sublime_plugin.EventListener):
 
 
 class MarkdownScrollSyncListener(sublime_plugin.ViewEventListener):
-    """Continuously sync Markdown editor scroll position with the browser preview."""
+    """Sync Markdown editor scroll position with the browser preview.
+
+    Polls only while the view is the active view of the active window, and
+    slowly while no server is running.
+    """
 
     POLL_INTERVAL_MS = 120
+    IDLE_POLL_INTERVAL_MS = 1000
     MIN_RATIO_DELTA = 0.01
     MIN_SEND_INTERVAL = 0.15
 
     def __init__(self, view):
         super().__init__(view)
-        self._polling = True
+        self._polling = False
+        self._poll_token = 0
         self._last_ratio = None
         self._last_sent = 0.0
         self._suppress_outgoing_until = 0.0
         _register_scroll_listener(self)
-        sublime.set_timeout(self._poll_scroll, self.POLL_INTERVAL_MS)
+        # No on_activated arrives for a view that is already focused when the
+        # listener is created (plugin load, syntax switched to Markdown).
+        if self._is_active_view():
+            self._start_polling()
 
     @classmethod
     def is_applicable(cls, settings):
         syntax = settings.get('syntax') or ''
         return 'Markdown' in syntax or syntax.endswith('markdown.sublime-syntax')
 
+    def on_activated(self):
+        self._start_polling()
+
+    def on_deactivated(self):
+        # Sublime also deactivates the view when the app loses focus; keep
+        # polling then, so scrolling the unfocused editor still syncs.
+        if not self._is_active_view():
+            self._stop_polling()
+
     def on_close(self):
-        self._polling = False
+        self._stop_polling()
         _unregister_scroll_listener(self)
 
-    def _poll_scroll(self):
-        if not self._polling or self.view.window() is None:
+    def _is_active_view(self):
+        window = self.view.window()
+        return (window is not None and window == sublime.active_window()
+                and window.active_view() == self.view)
+
+    def _start_polling(self):
+        if self._polling:
+            return
+        self._polling = True
+        self._schedule_poll(self.POLL_INTERVAL_MS)
+
+    def _stop_polling(self):
+        self._polling = False
+        self._poll_token += 1  # orphans the pending callback
+
+    def _schedule_poll(self, delay):
+        token = self._poll_token
+        sublime.set_timeout(lambda: self._poll_scroll(token), delay)
+
+    def _poll_scroll(self, token):
+        if token != self._poll_token or not self._polling:
             return
 
-        sublime.set_timeout(self._poll_scroll, self.POLL_INTERVAL_MS)
+        if not self._is_active_view():
+            self._stop_polling()
+            return
+
+        if not ServerManager.getInstance().isRunning():
+            self._schedule_poll(self.IDLE_POLL_INTERVAL_MS)
+            return
+
+        self._schedule_poll(self.POLL_INTERVAL_MS)
 
         if not self._should_sync():
             return
@@ -984,6 +1017,9 @@ def plugin_unloaded():
         
         # Clear singleton instance to prevent memory leaks
         ServerManager._instance = None
+        # Pending poll callbacks outlive the unloaded module; end them.
+        for listener in list(_SCROLL_SYNC_LISTENERS.values()):
+            listener._stop_polling()
         _SCROLL_SYNC_LISTENERS.clear()
         BufferCache.getInstance().clear()
         info("Plugin unloaded successfully")

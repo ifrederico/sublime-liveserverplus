@@ -13,6 +13,12 @@ class ServerStatus:
 
     STATUS_KEY = 'liveserverplus'
 
+    # What the status bar shows right now, shared by every instance: views
+    # opened later pick it up through apply_to_view(), and a restart creates
+    # a new ServerStatus while the old one is still finishing its 'stopped'.
+    _shown_text: Optional[str] = None
+    _shown_serial = 0
+
     def __init__(self, settings) -> None:
         self.settings = settings
         self.messages = {
@@ -76,6 +82,31 @@ class ServerStatus:
         self._stop_spinner()
         self._clear_view_status()
 
+    def refresh(self) -> None:
+        """Redraw the running status after ``showOnStatusbar`` may have changed."""
+        if self._current_status != 'running':
+            return
+        if self.settings.showOnStatusbar:
+            self._set_view_status(self._format_running_message(self._port))
+        else:
+            self.clear()
+
+    @classmethod
+    def current_text(cls) -> Optional[str]:
+        """Return the status bar text currently shown, or None."""
+        return cls._shown_text
+
+    @classmethod
+    def apply_to_view(cls, view) -> None:
+        """Give ``view`` the current status text (or remove a stale one)."""
+        if view is None:
+            return
+        text = cls._shown_text
+        if text:
+            view.set_status(cls.STATUS_KEY, text)
+        else:
+            view.erase_status(cls.STATUS_KEY)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -94,26 +125,27 @@ class ServerStatus:
         return False
 
     def _set_view_status(self, message: str) -> None:
-        window = sublime.active_window()
-        if not window:
-            return
-        
-        views = window.views()
-        
-        if not views:
-            # No views open - use window-level persistent status
-            sublime.status_message(message)
-        else:
-            # Set on all open views (per-view status)
-            for view in views:
-                view.set_status(self.STATUS_KEY, message)
+        ServerStatus._shown_text = message
+        ServerStatus._shown_serial += 1
+
+        for window in sublime.windows():
+            views = window.views()
+
+            if not views:
+                # No views open - use window-level persistent status
+                window.status_message(message)
+            else:
+                # Set on all open views (per-view status)
+                for view in views:
+                    view.set_status(self.STATUS_KEY, message)
 
     def _clear_view_status(self) -> None:
-        window = sublime.active_window()
-        if not window:
-            return
-        for view in window.views():
-            view.erase_status(self.STATUS_KEY)
+        ServerStatus._shown_text = None
+        ServerStatus._shown_serial += 1
+
+        for window in sublime.windows():
+            for view in window.views():
+                view.erase_status(self.STATUS_KEY)
 
     def _start_spinner(self, status: str) -> None:
         if not self.settings.showOnStatusbar:
@@ -141,8 +173,11 @@ class ServerStatus:
         sublime.set_timeout(self._spinner_tick, 150)
 
     def _schedule_clear_after_stop(self) -> None:
+        serial = ServerStatus._shown_serial
+
         def clear_if_still_stopped() -> None:
-            if self._current_status == 'stopped':
+            # Skip if anything was shown since, e.g. the next server of a restart.
+            if self._current_status == 'stopped' and ServerStatus._shown_serial == serial:
                 self._clear_view_status()
 
         sublime.set_timeout(clear_if_still_stopped, 2000)

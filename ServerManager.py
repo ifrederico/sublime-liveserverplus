@@ -9,6 +9,11 @@ from .liveserverplus_lib.logging import info, error
 from .liveserverplus_lib.qr_utils import get_local_ip
 from .liveserverplus_lib.path_utils import build_base_url, join_base_and_path
 
+SETTINGS_FILE = 'LiveServerPlus.sublime-settings'
+SETTINGS_WATCH_KEY = 'liveserverplus_restart_watch'
+SETTINGS_DEBOUNCE_MS = 300
+
+
 class ServerManager:
     """Manages the lifecycle of LiveServerPlus server instances"""
     
@@ -27,6 +32,8 @@ class ServerManager:
         self.server = None
         self.restart_pending = False
         self._scroll_listeners = []
+        self._watched_settings = None
+        self._settings_check_token = 0
         info("ServerManager initialized")
     
     def isRunning(self):
@@ -46,6 +53,7 @@ class ServerManager:
                 if hasattr(self.server, 'websocket'):
                     self.server.websocket.set_message_handler(self._handle_websocket_message)
                 self.server.start()
+                self._watch_settings()
                 return True
             except Exception as e:
                 error(f"Failed to start server: {e}")
@@ -53,34 +61,58 @@ class ServerManager:
                 self.server = None
                 return False
     
-    def stop(self):
-        """Stop the running live server"""
+    def stop(self, on_done=None):
+        """Stop the running live server.
+
+        ``on_done()`` runs on the main thread once ``Server.stop()`` has
+        returned, i.e. once the socket is closed. It is not called when no
+        server was running (the return value is False then).
+        """
         with self._lock:
+            self._unwatch_settings()
             if not self.isRunning():
                 info("No server running to stop")
                 return False
-                
+
+            server_to_stop = self.server
+            self.server = None  # Clear reference immediately
+
+        def stop_server():
             try:
-                server_to_stop = self.server
-                self.server = None  # Clear reference immediately
-                info("Stopping server...")
-                # Start shutdown in a daemon thread
-                sublime.set_timeout_async(server_to_stop.stop, 0)
-                return True
+                server_to_stop.stop()
             except Exception as e:
                 error(f"Error stopping server: {e}")
-                sublime.error_message(f"[LiveServerPlus] Error stopping server: {e}")
-                return False
+            finally:
+                if on_done:
+                    sublime.set_timeout(on_done, 0)
+
+        try:
+            info("Stopping server...")
+            # Shut down on the worker thread (Server.stop() blocks briefly),
+            # outside the lock so on_done may call start().
+            sublime.set_timeout_async(stop_server, 0)
+            return True
+        except Exception as e:
+            error(f"Error stopping server: {e}")
+            sublime.error_message(f"[LiveServerPlus] Error stopping server: {e}")
+            return False
     
-    def restart(self, folders):
-        """Restart the server with possibly new folders"""
-        with self._lock:
-            info("Restarting server...")
-            was_running = self.isRunning()
-            if was_running:
-                self.stop()
+    def restart(self, folders, on_done=None):
+        """Stop the server, then start it on ``folders`` once it is fully down.
+
+        ``on_done(success)`` runs on the main thread after the new server was
+        started (or failed to). Starts right away if no server was running.
+        """
+        info("Restarting server...")
+        folders = list(folders)
+
+        def start_new_server():
             success = self.start(folders)
-            return success and was_running
+            if on_done:
+                on_done(success)
+
+        if not self.stop(on_done=start_new_server):
+            start_new_server()
     
     def getServer(self):
         """Get current server instance if running"""
@@ -158,6 +190,51 @@ class ServerManager:
             return False
         server.broadcast_message(message)
         return True
+
+    def _watch_settings(self):
+        """Follow settings-file edits while a server runs (one callback at most)."""
+        settings = sublime.load_settings(SETTINGS_FILE)
+        settings.clear_on_change(SETTINGS_WATCH_KEY)
+        settings.add_on_change(SETTINGS_WATCH_KEY, self._on_settings_change)
+        self._watched_settings = settings
+
+    def _unwatch_settings(self):
+        self._settings_check_token += 1  # drop a pending check
+        if self._watched_settings is not None:
+            self._watched_settings.clear_on_change(SETTINGS_WATCH_KEY)
+            self._watched_settings = None
+
+    def _on_settings_change(self):
+        # Sublime can call this several times for one save; check once.
+        self._settings_check_token += 1
+        token = self._settings_check_token
+        sublime.set_timeout(lambda: self._check_settings(token), SETTINGS_DEBOUNCE_MS)
+
+    def _check_settings(self, token):
+        """Apply live settings, and restart if a restart-only setting changed."""
+        if token != self._settings_check_token:
+            return
+        server = self.getServer()
+        if not server:
+            return
+
+        server.settings.refresh()
+        if hasattr(server, 'status'):
+            server.status.refresh()
+
+        changed = server.settings.changed_restart_keys()
+        if not changed:
+            return
+
+        info(f"Settings changed ({', '.join(changed)}); restarting server")
+        if hasattr(server, 'status'):
+            server.status.update('restarting')
+
+        def on_restarted(success):
+            if not success:
+                sublime.error_message("[LiveServerPlus] Failed to restart server after a settings change.")
+
+        self.restart(server.folders, on_done=on_restarted)
 
     def registerScrollSyncListener(self, callback):
         """Register callback for incoming markdown scroll events."""
