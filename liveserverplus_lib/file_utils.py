@@ -2,7 +2,7 @@
 """Centralized file handling utilities"""
 import os
 import time
-from .constants import TEXT_FILE_EXTENSIONS, MIME_TYPES
+from .constants import MIME_TYPES
 from .text_utils import extract_file_extension
 from .logging import info, error
 
@@ -10,19 +10,6 @@ from .logging import info, error
 _mime_cache = {}
 _MIME_CACHE_MAX_SIZE = 1000  # Maximum number of entries
 
-
-def is_text_file(file_path):
-    """
-    Check if a file is likely a text file based on extension.
-    
-    Args:
-        file_path (str): Path to the file
-        
-    Returns:
-        bool: True if likely a text file
-    """
-    ext = extract_file_extension(file_path)
-    return ext in TEXT_FILE_EXTENSIONS
 
 def get_mime_type(file_path):
     """Get MIME type for file path with caching and cache limit."""
@@ -64,31 +51,6 @@ def isFileAllowed(file_path, allowed_extensions_set):
     """
     ext = extract_file_extension(file_path)
     return ext in allowed_extensions_set
-
-
-def should_compress_file(file_path, mime_type=None):
-    """
-    Determine if a file should be compressed based on its type.
-    
-    Args:
-        file_path (str): Path to the file
-        mime_type (str): Optional pre-determined MIME type
-        
-    Returns:
-        bool: True if file should be compressed
-    """
-    from .constants import NO_COMPRESS_EXTENSIONS, SKIP_COMPRESSION_TYPES
-    
-    # Check extension first
-    ext = extract_file_extension(file_path)
-    if ext in NO_COMPRESS_EXTENSIONS:
-        return False
-    
-    # Check MIME type
-    if mime_type is None:
-        mime_type = get_mime_type(file_path)
-    
-    return mime_type not in SKIP_COMPRESSION_TYPES
 
 
 def get_file_info(file_path):
@@ -137,79 +99,3 @@ def find_index_file(directory_path):
         if os.path.isfile(index_path):
             return index_path
     return None
-
-
-def is_binary_file(file_path):
-    """
-    Check if file is binary by reading a sample.
-    
-    Args:
-        file_path (str): Path to file
-        
-    Returns:
-        bool: True if binary, False otherwise
-    """
-    # Quick check based on extension
-    ext = extract_file_extension(file_path)
-    binary_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.pdf', '.zip', 
-                        '.exe', '.dll', '.so', '.mp3', '.mp4', '.webm',
-                        '.woff', '.woff2', '.ttf', '.eot', '.otf'}
-    
-    if ext in binary_extensions:
-        return True
-    
-    # For text file extensions, assume text
-    if ext in TEXT_FILE_EXTENSIONS:
-        return False
-        
-    # Content-based check for unknown extensions
-    try:
-        with open(file_path, 'rb') as f:
-            chunk = f.read(1024)
-            # Check for null bytes (common in binary files)
-            if b'\x00' in chunk:
-                return True
-                
-            # Check for high concentration of non-ASCII bytes
-            non_ascii = sum(1 for b in chunk if b > 127)
-            if non_ascii > len(chunk) * 0.3:  # More than 30% non-ASCII
-                return True
-                
-            return False
-    except Exception as e:
-        info(f"Error checking if file is binary: {e}")
-        return True
-
-
-def get_file_encoding(file_path, default='utf-8'):
-    """
-    Simple encoding detection for text files.
-    
-    Args:
-        file_path (str): Path to the file
-        default (str): Default encoding if detection fails
-        
-    Returns:
-        str: Detected or default encoding
-    """
-    if is_binary_file(file_path):
-        return None
-        
-    try:
-        # Check for BOM
-        with open(file_path, 'rb') as f:
-            sample = f.read(4)
-            
-        if sample.startswith(b'\xef\xbb\xbf'):
-            return 'utf-8-sig'
-        elif sample.startswith(b'\xff\xfe'):
-            return 'utf-16-le'
-        elif sample.startswith(b'\xfe\xff'):
-            return 'utf-16-be'
-        
-        # For most web files, UTF-8 is a safe bet
-        return default
-        
-    except Exception as e:
-        info("Error detecting encoding for {file_path}: {e}")
-        return default

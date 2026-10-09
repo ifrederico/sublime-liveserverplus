@@ -1,14 +1,14 @@
 # liveserverplus_lib/file_server.py
 """File serving utilities"""
 import os
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 import sublime
-from .utils import (compressData, detectEncoding, createFileReader, 
-                   streamCompressData, shouldSkipCompression)
-from .path_utils import validate_and_secure_path
-from .file_utils import (get_mime_type, isFileAllowed, should_compress_file)
-from .http_utils import (HTTPResponse, create_file_response, create_error_response)
+from .utils import createFileReader
+from .path_utils import validate_and_secure_path, resolve_served_path
+from .file_utils import get_mime_type, isFileAllowed, find_index_file
+from .http_utils import (HTTPResponse, create_file_response, create_error_response,
+                         create_redirect_response)
 from .logging import info, error
 from .constants import STREAMING_THRESHOLD, LARGE_FILE_THRESHOLD
 from .markdown_renderer import MarkdownRenderer, guess_markdown_title, ASSET_URL_PREFIX
@@ -58,40 +58,47 @@ class FileServer:
     def serveFile(self, conn, path, folders):
         """
         Main entry point for serving files.
-        Returns True if file was served, False otherwise.
+        Returns True if a response was sent, False when nothing may be
+        served for ``path`` (the caller then sends the 404 page).
+
+        Dotfiles, dot-directories and paths matching ``ignoreFiles`` are
+        treated as missing. A directory serves its index.html / index.htm
+        from the first folder that has one, otherwise a listing.
         """
         # Vendored preview assets are served from the package, not the
         # user's folders, so they are resolved before anything else.
         if path.startswith(ASSET_URL_PREFIX + '/'):
             return self._serveVendorAsset(conn, path[len(ASSET_URL_PREFIX) + 1:])
 
-        # Quick existence check for common case
-        if path == '/' or path == '/index.html':
-            for folder in folders:
-                index_path = os.path.join(folder, 'index.html')
-                if os.path.isfile(index_path):
-                    return self._serveFile(conn, index_path, 'index.html', folder)
-            if path == '/':
-                for folder in folders:
-                    if os.path.isdir(folder):
-                        return self._serveDirectory(conn, folder, '/', folder)
-            
         rel_path = unquote(path.lstrip('/'))
-        
-        # Try to find and serve the file
+        ignore_patterns = getattr(self.settings, 'ignorePatterns', None) or []
+        listing = None
+            
         for folder in folders:
-            safe_path = validate_and_secure_path(folder, rel_path)
-            if not safe_path:
+            target = resolve_served_path(folder, rel_path, ignore_patterns)
+            if not target:
                 continue
             
-            # Check if it's a directory
-            if os.path.isdir(safe_path):
-                return self._serveDirectory(conn, safe_path, path, folder)
+            if os.path.isdir(target):
+                if not path.endswith('/'):
+                    # Relative links inside the page resolve against the
+                    # URL, so a directory needs its trailing slash.
+                    location = '/' + quote(rel_path.lstrip('/\\'), safe='/')
+                    if not location.endswith('/'):
+                        location += '/'
+                    return create_redirect_response(location, permanent=True).send(conn)
+                index_path = find_index_file(target)
+                if index_path:
+                    index_rel = rel_path + os.path.basename(index_path)
+                    if resolve_served_path(folder, index_rel, ignore_patterns):
+                        return self._serveFile(conn, index_path, index_rel, folder)
+                if listing is None:
+                    listing = (target, folder)
+            elif listing is None and os.path.isfile(target):
+                return self._serveFile(conn, target, rel_path, folder)
                 
-            # Check if it's a file
-            if os.path.isfile(safe_path):
-                return self._serveFile(conn, safe_path, rel_path, folder)
-                
+        if listing:
+            return self._serveDirectory(conn, listing[0], path, listing[1])
         return False
         
     def _serveDirectory(self, conn, dir_path, url_path, root_path):
@@ -234,15 +241,11 @@ class FileServer:
         except OSError:
             return False
 
-        # Handle different serving methods
-        if is_allowed:
-            if should_stream and not full_path.lower().endswith(('.html', '.htm')):
-                return self._streamFile(conn, full_path, mime_type)
-            else:
-                return self._sendFileContents(conn, full_path, mime_type)
-        else:
-            # Force download for non-allowed files
-            return self._sendAsDownload(conn, full_path, mime_type, file_size)
+        # Every type is served inline; unknown extensions go out as
+        # application/octet-stream, which browsers download on their own.
+        if should_stream and not full_path.lower().endswith(('.html', '.htm')):
+            return self._streamFile(conn, full_path, mime_type)
+        return self._sendFileContents(conn, full_path, mime_type)
         
     def _readFileFromDisk(self, file_path):
         """Read file from disk in binary mode"""
@@ -285,30 +288,18 @@ class FileServer:
         if content is None:
             return False
             
-        # Inject WebSocket script for HTML files FIRST (before compression)
+        # Inject WebSocket script for HTML files
         if file_path.lower().endswith(('.html', '.htm')) and self.websocket_injector:
             if getattr(self.settings, 'logging', False):
                 info(f"Injecting WebSocket code into {file_path}")
             content = self.websocket_injector(content)
 
-        # Apply compression if enabled and appropriate
-        is_compressed = False
-        if getattr(self.settings, 'enableCompression', False) and should_compress_file(file_path, mime_type):
-            try:
-                compressed = compressData(content, mime_type)
-                # Only use compressed version if it's actually smaller
-                if len(compressed) < len(content):
-                    content = compressed
-                    is_compressed = True
-            except Exception as e:
-                if getattr(self.settings, 'logging', False):
-                    error(f"Compression failed for {file_path}: {e}")
-
+        # No compression: the server is usually reached over loopback,
+        # where gzip only costs CPU on every reload.
         response = create_file_response(
             content=content,
             mime_type=mime_type,
-            enable_cors=self.settings.corsEnabled,
-            is_compressed=is_compressed
+            enable_cors=self.settings.corsEnabled
         )
         
         return response.send(conn)
@@ -331,56 +322,25 @@ class FileServer:
             if self.settings.corsEnabled:
                 response.add_cors_headers()
                 
-            # Skip compression for dev server
-            should_compress = False
-                
             # Send headers first
             headers_data = response.build()
             headers_only = headers_data[:headers_data.rfind(b'\r\n\r\n') + 4]
             conn.sendall(headers_only)
             
-            # Stream file contents
-            file_reader = createFileReader(file_path)
-            
-            for chunk in file_reader:
-                conn.sendall(chunk)
-                
-            return True
-            
         except Exception as e:
             error(f"Error streaming file: {e}")
             return False
             
-    def _sendAsDownload(self, conn, file_path, mime_type, file_size):
-        """Send file as download with Content-Disposition header"""
-        filename = os.path.basename(file_path)
-        
-        response = HTTPResponse(200)
-        response.set_header('Content-Type', mime_type)
-        response.set_header('Content-Disposition', f'attachment; filename="{filename}"')
-        response.add_cache_headers()
-        
-        if self.settings.corsEnabled:
-            response.add_cors_headers()
-            
-        # Stream if large, otherwise read into memory
-        if file_size > (1024 * 1024):  # 1MB
-            response.set_header('Content-Length', str(file_size))
-            headers_data = response.build()
-            headers_only = headers_data[:headers_data.rfind(b'\r\n\r\n') + 4]
-            conn.sendall(headers_only)
-            
+        try:
             for chunk in createFileReader(file_path):
                 conn.sendall(chunk)
+        except Exception as e:
+            # The headers are already out, so report the response as sent:
+            # the connection closes with a short body, and the caller must
+            # not append a 404 page to it.
+            error(f"Error streaming file: {e}")
                 
-            return True
-        else:
-            content = self._readFileFromDisk(file_path)
-            if content is None:
-                return False
-                
-            response.set_body(content)
-            return response.send(conn)
+        return True
             
     def _sendForbidden(self, conn):
         """Send 403 Forbidden response"""

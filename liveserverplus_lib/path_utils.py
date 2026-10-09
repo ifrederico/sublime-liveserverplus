@@ -4,6 +4,7 @@ import os
 import pathlib
 from pathlib import PurePath, PureWindowsPath
 from urllib.parse import unquote, urljoin, urlunsplit, quote
+from .ignore import matches_ignore
 from .logging import info, error
 
 
@@ -59,6 +60,64 @@ def validate_and_secure_path(base_folder, requested_path):
     except Exception as e:
         error(f"Path validation error: {e}")
         return None
+
+
+def has_hidden_segment(rel_path):
+    """Return True when any segment of ``rel_path`` starts with a dot.
+
+    ``.env``, ``.git/config`` and ``a/.cache/b`` are hidden; ``a.b/c`` is not.
+    """
+    return any(part.startswith('.') for part in rel_path.replace('\\', '/').split('/'))
+
+
+def is_refused_path(full_path, root, ignore_patterns):
+    """Return True when the server must treat ``full_path`` as missing.
+
+    Below ``root``, dotfiles, anything inside a dot-directory, and anything
+    matching the ``ignoreFiles`` patterns are refused; ``root`` itself never
+    is. Both paths must be in the same form (both resolved, or both not).
+    """
+    try:
+        rel_path = os.path.relpath(full_path, root)
+    except ValueError:  # different drives on Windows
+        return True
+    if rel_path == '.':
+        return False
+    if has_hidden_segment(rel_path):  # also catches "..", i.e. outside root
+        return True
+    if not ignore_patterns or not matches_ignore(full_path, ignore_patterns):
+        return False
+    # When the served folder itself lies inside an ignored directory (say an
+    # examples folder under node_modules), only the part below it counts.
+    if matches_ignore(root, ignore_patterns):
+        return matches_ignore(rel_path, ignore_patterns)
+    return True
+
+
+def resolve_served_path(folder, rel_path, ignore_patterns=None):
+    """Resolve a request path under ``folder`` and apply the serving policy.
+
+    ``rel_path`` is the URL path without its leading slash, already
+    unquoted. Returns ``folder`` unchanged for the root (empty
+    ``rel_path``), the resolved absolute path otherwise, or None when the
+    path escapes ``folder`` or is refused by :func:`is_refused_path`.
+    Existence is not checked.
+    """
+    if not rel_path:
+        return folder
+    if has_hidden_segment(rel_path):
+        return None
+    safe_path = validate_and_secure_path(folder, rel_path)
+    if not safe_path:
+        return None
+    try:
+        real_root = str(pathlib.Path(folder).resolve())
+    except Exception as e:
+        info(f"Path resolution failed: {e}")
+        return None
+    if is_refused_path(safe_path, real_root, ignore_patterns):
+        return None
+    return safe_path
 
 
 def relative_to_root(file_path, roots):

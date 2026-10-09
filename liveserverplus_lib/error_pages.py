@@ -1,9 +1,13 @@
 # error_pages.py
 """Error pages handler module with centralized HTML generation"""
-import os
 from http.client import responses
-from .directory_listing import DirectoryListing
-from .text_utils import find_similar_files
+from urllib.parse import quote
+from .text_utils import find_similar_files, escape_html
+
+# Requests browsers and crawlers make on their own. They 404 on most
+# projects, often on every page load, so they get no "Did you mean" walk.
+_BROWSER_PROBE_PATHS = ('/favicon.ico', '/robots.txt', '/sitemap.xml')
+_BROWSER_PROBE_PREFIXES = ('/apple-touch-icon', '/.well-known/')
 
 
 class ErrorPages:
@@ -117,36 +121,31 @@ class ErrorPages:
     @staticmethod
     def get_404_page(path, folders, settings=None):
         """
-        Generate a 404 page or a directory listing if path is a folder.
+        Generate a 404 page.
+
+        Directories are served (or refused) by FileServer.serveFile, so
+        this never produces a listing.
         
         Args:
             path: The requested URL path (e.g. "/somefile").
             folders: The server's list of project folders.
-            settings: (Optional) A ServerSettings instance, used by DirectoryListing.
+            settings: (Optional) A ServerSettings instance; its ignoreDirs
+                and ignoreFiles keep the suggestion walk out of those paths.
             
         Returns:
             str: A UTF-8 HTML string
         """
-        # Check if path is actually a directory
-        for folder in folders:
-            full_path = os.path.join(folder, path.lstrip("/"))
-            if os.path.isdir(full_path):
-                directory_lister = DirectoryListing(settings=settings)
-                listing_bytes = directory_lister.generate_listing(
-                    dir_path=full_path,
-                    url_path=path,
-                    root_path=folder
-                )
-                return listing_bytes.decode("utf-8", errors="replace")
-        
-        # Generate suggestions
-        suggestions_html = ErrorPages._generate_suggestions(path, folders)
+        lowered = path.lower()
+        if lowered in _BROWSER_PROBE_PATHS or lowered.startswith(_BROWSER_PROBE_PREFIXES):
+            suggestions_html = ""
+        else:
+            suggestions_html = ErrorPages._generate_suggestions(path, folders, settings)
         
         # Use the generic error page generator
         return ErrorPages.get_error_page(
             status_code=404,
             message="Page Not Found",
-            details=f'The requested URL <code>{path}</code> was not found on this server.',
+            details=f'The requested URL <code>{escape_html(path)}</code> was not found on this server.',
             suggestions=suggestions_html
         )
     
@@ -210,7 +209,7 @@ class ErrorPages:
         )
 
     @staticmethod
-    def _generate_suggestions(path, folders):
+    def _generate_suggestions(path, folders, settings=None):
         """
         Generate "Did you mean:" file suggestions using text_utils.
         
@@ -218,14 +217,18 @@ class ErrorPages:
             str: HTML snippet with suggestions or empty string
         """
         # Use text_utils function for finding similar files
-        suggestions = find_similar_files(path, folders, threshold=0.5, max_results=5)
+        suggestions = find_similar_files(
+            path, folders, threshold=0.5, max_results=5,
+            ignore_dirs=getattr(settings, 'ignoreDirs', None) or (),
+            ignore_patterns=getattr(settings, 'ignorePatterns', None) or (),
+        )
         
         if not suggestions:
             return ""
         
         # Generate suggestion HTML
         items_html = "".join(
-            f'<li><a href="/{file_path}">{file_path}</a></li>'
+            f'<li><a href="/{quote(file_path)}">{escape_html(file_path)}</a></li>'
             for file_path, _ in suggestions
         )
 

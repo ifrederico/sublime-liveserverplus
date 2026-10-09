@@ -2,7 +2,10 @@
 """Text and string manipulation utilities"""
 import re
 import os
-from typing import List, Tuple, Optional
+import time
+from typing import Iterable, Iterator, List, Tuple, Optional
+
+from .path_utils import is_refused_path
 
 def calculate_similarity(a: str, b: str) -> float:
     """
@@ -43,34 +46,66 @@ def calculate_similarity(a: str, b: str) -> float:
     return 1 - (distances[-1] / max(len(a), len(b)))
 
 
+def _walk_servable_files(directory: str, ignore_dirs: Iterable[str],
+                         ignore_patterns: Iterable[str]) -> Iterator[str]:
+    """Yield the files under ``directory`` that the server would serve.
+
+    Refused directories (dot-directories, ``ignore_dirs`` names, paths
+    matching ``ignore_patterns``) are pruned before ``os.walk`` enters them.
+    """
+    for root, dirs, files in os.walk(directory):
+        dirs[:] = [
+            name for name in dirs
+            if name not in ignore_dirs
+            and not is_refused_path(os.path.join(root, name), directory, ignore_patterns)
+        ]
+        for filename in files:
+            file_path = os.path.join(root, filename)
+            if not is_refused_path(file_path, directory, ignore_patterns):
+                yield file_path
+
+
 def find_similar_files(search_term: str, directories: List[str], 
-                      threshold: float = 0.5, max_results: int = 5) -> List[Tuple[str, float]]:
+                      threshold: float = 0.5, max_results: int = 5,
+                      ignore_dirs: Iterable[str] = (), ignore_patterns: Iterable[str] = (),
+                      max_files: int = 2000, time_limit: float = 0.1) -> List[Tuple[str, float]]:
     """
     Find files with names similar to the search term.
+
+    Only files the server would serve are considered. The walk stops after
+    ``max_files`` files or ``time_limit`` seconds, whichever comes first,
+    so a 404 stays cheap in a large project.
     
     Args:
         search_term: Term to search for
         directories: List of directories to search in
         threshold: Minimum similarity threshold (0-1)
         max_results: Maximum number of results to return
+        ignore_dirs: Directory names never walked into
+        ignore_patterns: ``ignoreFiles`` glob patterns
+        max_files: Maximum number of file names compared
+        time_limit: Maximum seconds spent walking
         
     Returns:
         List of tuples (file_path, similarity_score)
     """
     results = []
     search_name = os.path.basename(search_term).lower()
+    ignore_dirs = set(ignore_dirs)
+    deadline = time.monotonic() + time_limit
+    candidates = (
+        (directory, file_path)
+        for directory in directories
+        for file_path in _walk_servable_files(directory, ignore_dirs, ignore_patterns)
+    )
     
-    for directory in directories:
-        try:
-            for root, _, files in os.walk(directory):
-                for filename in files:
-                    similarity = calculate_similarity(search_name, filename.lower())
-                    if similarity >= threshold:
-                        file_path = os.path.join(root, filename)
-                        rel_path = os.path.relpath(file_path, directory)
-                        results.append((rel_path.replace("\\", "/"), similarity))
-        except OSError:
-            continue
+    for checked, (directory, file_path) in enumerate(candidates):
+        if checked >= max_files or time.monotonic() > deadline:
+            break
+        similarity = calculate_similarity(search_name, os.path.basename(file_path).lower())
+        if similarity >= threshold:
+            rel_path = os.path.relpath(file_path, directory)
+            results.append((rel_path.replace("\\", "/"), similarity))
             
     # Sort by similarity (highest first) and return top results
     results.sort(key=lambda x: x[1], reverse=True)

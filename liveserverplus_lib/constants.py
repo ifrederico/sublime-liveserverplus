@@ -150,60 +150,6 @@ MIME_TYPES = {
     '.gz': 'application/gzip'
 }
 
-# File extensions that should not be compressed (already compressed)
-NO_COMPRESS_EXTENSIONS = {
-    # Images
-    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif',
-    
-    # Archives
-    '.zip', '.rar', '.7z', '.gz', '.bz2',
-    
-    # Media
-    '.mp3', '.mp4', '.avi', '.mov', '.webm',
-    
-    # Other compressed formats
-    '.pdf', '.woff', '.woff2'
-}
-
-# MIME types that should skip compression
-SKIP_COMPRESSION_TYPES = {
-    # Images
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-    'image/x-icon',
-    
-    # Audio/Video
-    'audio/mpeg',
-    'audio/mp4',
-    'video/mp4',
-    'video/webm',
-    'audio/ogg',
-    
-    # Archives
-    'application/zip',
-    'application/x-rar-compressed',
-    'application/x-7z-compressed',
-    
-    # PDFs
-    'application/pdf',
-    
-    # Fonts
-    'font/woff',
-    'font/woff2',
-}
-
-# Text file extensions (for encoding detection)
-TEXT_FILE_EXTENSIONS = {
-    '.html', '.htm', '.css', '.js', '.mjs', '.json',
-    '.xml', '.txt', '.md', '.jsx', '.ts', '.tsx', 
-    '.svg', '.vue', '.svelte', '.py', '.php', '.rb',
-    '.java', '.c', '.cpp', '.h', '.sh', '.bat',
-    '.sql', '.csv', '.yaml', '.yml', '.toml', '.ini',
-    '.scss', '.sass', '.less', '.postcss'
-}
-
 # Default server settings (public export for tooling compatibility)
 DEFAULT_SETTINGS = {
     'customBrowser': '',
