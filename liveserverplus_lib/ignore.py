@@ -84,6 +84,9 @@ def matches_ignore(path: str, patterns: Iterable[str]) -> bool:
         if not isinstance(pattern, str):
             continue
         compiled = _compile(pattern)
-        if compiled is not None and compiled.search(normalized):
+        # Every compiled pattern begins with '^/?', '(?:^|.*/)' or '.*', so
+        # match() from position 0 finds everything search() would, without
+        # re-scanning from each later position.
+        if compiled is not None and compiled.match(normalized):
             return True
     return False
