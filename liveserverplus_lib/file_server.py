@@ -61,9 +61,10 @@ class FileServer:
         Returns True if a response was sent, False when nothing may be
         served for ``path`` (the caller then sends the 404 page).
 
-        Dotfiles, dot-directories and paths matching ``ignoreFiles`` are
-        treated as missing. A directory serves its index.html / index.htm
-        from the first folder that has one, otherwise a listing.
+        Dotfiles and anything inside a dot-directory are treated as
+        missing; ``ignoreFiles`` does not affect serving. A directory
+        serves its index.html / index.htm from the first folder that has
+        one, otherwise a listing.
         """
         # Vendored preview assets are served from the package, not the
         # user's folders, so they are resolved before anything else.
@@ -71,11 +72,10 @@ class FileServer:
             return self._serveVendorAsset(conn, path[len(ASSET_URL_PREFIX) + 1:])
 
         rel_path = unquote(path.lstrip('/'))
-        ignore_patterns = getattr(self.settings, 'ignorePatterns', None) or []
         listing = None
             
         for folder in folders:
-            target = resolve_served_path(folder, rel_path, ignore_patterns)
+            target = resolve_served_path(folder, rel_path)
             if not target:
                 continue
             
@@ -90,7 +90,8 @@ class FileServer:
                 index_path = find_index_file(target)
                 if index_path:
                     index_rel = rel_path + os.path.basename(index_path)
-                    if resolve_served_path(folder, index_rel, ignore_patterns):
+                    # The index may be a symlink into a dot-directory.
+                    if resolve_served_path(folder, index_rel):
                         return self._serveFile(conn, index_path, index_rel, folder)
                 if listing is None:
                     listing = (target, folder)

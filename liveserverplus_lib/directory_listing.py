@@ -10,7 +10,6 @@ from .logging import info, error
 from .constants import FILE_ICONS, DEFAULT_FILE_ICON, DIRECTORY_ICON
 from .text_utils import format_file_size, extract_file_extension, escape_html
 from .file_utils import isFileAllowed
-from .path_utils import is_refused_path
 
 
 class DirectoryListing:
@@ -96,24 +95,13 @@ class DirectoryListing:
             error(f"Error getting file info for {path}: {e}")
             return None
 
-    def generate_items_list(self, dir_path: str, include_hidden: bool = False,
-                            root_path: str = None) -> List[Dict[str, Any]]:
-        """Generate list of directory items with consistent formatting.
-
-        Entries matching the ``ignoreFiles`` patterns are left out, since
-        the server refuses to serve them.
-        """
+    def generate_items_list(self, dir_path: str, include_hidden: bool = False) -> List[Dict[str, Any]]:
+        """Generate list of directory items with consistent formatting"""
         items = []
-        ignore_patterns = getattr(self.settings, 'ignorePatterns', None) or []
         try:
-            real_dir = os.path.realpath(dir_path)
-            real_root = os.path.realpath(root_path or dir_path)
             with os.scandir(dir_path) as entries:
                 for entry in entries:
                     if not include_hidden and entry.name.startswith('.'):
-                        continue
-                    if ignore_patterns and is_refused_path(
-                            os.path.join(real_dir, entry.name), real_root, ignore_patterns):
                         continue
                     file_info = self.get_file_info(entry.path, entry)
                     if file_info:
@@ -155,7 +143,7 @@ class DirectoryListing:
                 return self._cache[cache_key]
             
         try:
-            items = self.generate_items_list(dir_path, root_path=root_path)
+            items = self.generate_items_list(dir_path)
             
             # Add URL paths to items
             for item in items:

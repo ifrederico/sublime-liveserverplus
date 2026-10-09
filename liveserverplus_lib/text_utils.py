@@ -5,6 +5,7 @@ import os
 import time
 from typing import Iterable, Iterator, List, Tuple, Optional
 
+from .ignore import matches_ignore
 from .path_utils import is_refused_path
 
 def calculate_similarity(a: str, b: str) -> float:
@@ -46,22 +47,40 @@ def calculate_similarity(a: str, b: str) -> float:
     return 1 - (distances[-1] / max(len(a), len(b)))
 
 
-def _walk_servable_files(directory: str, ignore_dirs: Iterable[str],
-                         ignore_patterns: Iterable[str]) -> Iterator[str]:
-    """Yield the files under ``directory`` that the server would serve.
+def _is_skipped(path: str, root: str, ignore_patterns: Iterable[str]) -> bool:
+    """Return True for paths a suggestion must not come from.
 
-    Refused directories (dot-directories, ``ignore_dirs`` names, paths
+    That is anything the server refuses (dotfiles, dot-directories) and
+    anything matching ``ignore_patterns``: those are served, but
+    suggestions from node_modules and the like are noise.
+    """
+    if is_refused_path(path, root):
+        return True
+    if not ignore_patterns or not matches_ignore(path, ignore_patterns):
+        return False
+    # When the folder itself lies inside an ignored directory (say an
+    # examples folder under node_modules), only the part below it counts.
+    if matches_ignore(root, ignore_patterns):
+        return matches_ignore(os.path.relpath(path, root), ignore_patterns)
+    return True
+
+
+def _walk_candidate_files(directory: str, ignore_dirs: Iterable[str],
+                          ignore_patterns: Iterable[str]) -> Iterator[str]:
+    """Yield the files under ``directory`` worth suggesting.
+
+    Skipped directories (dot-directories, ``ignore_dirs`` names, paths
     matching ``ignore_patterns``) are pruned before ``os.walk`` enters them.
     """
     for root, dirs, files in os.walk(directory):
         dirs[:] = [
             name for name in dirs
             if name not in ignore_dirs
-            and not is_refused_path(os.path.join(root, name), directory, ignore_patterns)
+            and not _is_skipped(os.path.join(root, name), directory, ignore_patterns)
         ]
         for filename in files:
             file_path = os.path.join(root, filename)
-            if not is_refused_path(file_path, directory, ignore_patterns):
+            if not _is_skipped(file_path, directory, ignore_patterns):
                 yield file_path
 
 
@@ -72,9 +91,10 @@ def find_similar_files(search_term: str, directories: List[str],
     """
     Find files with names similar to the search term.
 
-    Only files the server would serve are considered. The walk stops after
-    ``max_files`` files or ``time_limit`` seconds, whichever comes first,
-    so a 404 stays cheap in a large project.
+    Dotfiles, dot-directories, ``ignore_dirs`` and ``ignore_patterns``
+    matches are skipped. The walk stops after ``max_files`` files or
+    ``time_limit`` seconds, whichever comes first, so a 404 stays cheap in
+    a large project.
     
     Args:
         search_term: Term to search for
@@ -96,7 +116,7 @@ def find_similar_files(search_term: str, directories: List[str],
     candidates = (
         (directory, file_path)
         for directory in directories
-        for file_path in _walk_servable_files(directory, ignore_dirs, ignore_patterns)
+        for file_path in _walk_candidate_files(directory, ignore_dirs, ignore_patterns)
     )
     
     for checked, (directory, file_path) in enumerate(candidates):

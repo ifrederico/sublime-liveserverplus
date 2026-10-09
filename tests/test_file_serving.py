@@ -1,5 +1,6 @@
-"""File serving: directory indexes, the dotfile/ignoreFiles policy,
-uncompressed responses, streaming, and the cost of 404 suggestions."""
+"""File serving: directory indexes, the dotfile policy (ignoreFiles is
+watch-only), uncompressed responses, streaming, and the cost of 404
+suggestions."""
 import itertools
 import os
 import sys
@@ -159,17 +160,26 @@ class ServingPolicyTests(ServingTestCase):
         for url in ("/.git", "/.git/", "/.git/config", "/.git/HEAD"):
             self.assertNotServed(url)
 
-    def test_ignore_patterns_are_not_served_at_any_depth(self):
-        self.write("node_modules/pkg/dist/x.js", "x")
-        self.write("src/__pycache__/m.pyc", b"\0")
-        for url in ("/node_modules/", "/node_modules/pkg/dist/x.js", "/src/__pycache__/m.pyc"):
-            self.assertNotServed(url)
+    def assertServed(self, url, expected):
+        served, conn = self.get(url)
+        status, _, body = conn.response()
+        self.assertTrue(served, url)
+        self.assertEqual(status, "HTTP/1.1 200 OK", url)
+        self.assertIn(expected, body, url)
 
-    def test_custom_ignore_pattern_is_honoured(self):
-        self.write("drafts/post.html", "<html></html>")
-        self.settings.ignorePatterns = ["drafts"]
-        self.assertNotServed("/drafts/post.html")
-        self.assertNotServed("/drafts/")
+    def test_ignore_patterns_do_not_affect_serving(self):
+        """ignoreFiles is watch-only: pages may load scripts from node_modules."""
+        self.write("node_modules/pkg/dist/x.js", "NODE_MODULE")
+        self.write("src/__pycache__/m.pyc", b"\0PYC")
+        self.assertServed("/node_modules/pkg/dist/x.js", b"NODE_MODULE")
+        self.assertServed("/node_modules/", b">pkg<")
+        self.assertServed("/src/__pycache__/m.pyc", b"\0PYC")
+
+    def test_custom_ignore_pattern_does_not_refuse_a_file(self):
+        self.write("drafts/post.html", "<html><body>DRAFT</body></html>")
+        self.settings.ignorePatterns = ["drafts", "*.html"]
+        self.assertServed("/drafts/post.html", b"DRAFT")
+        self.assertServed("/drafts/", b">post.html<")
 
     def test_symlink_into_a_dot_directory_is_not_served(self):
         self.write(".secret/key.txt", "k")
@@ -180,27 +190,28 @@ class ServingPolicyTests(ServingTestCase):
         self.assertNotServed("/public/key.txt")
 
     def test_folder_inside_an_ignored_directory_is_still_served(self):
-        """Opening node_modules/<pkg>/examples as the project must not 404 everything."""
+        """Opening node_modules/<pkg>/examples as the project must work."""
         demo = self.tmp / "node_modules" / "pkg" / "examples"
         (demo / "node_modules" / "dep").mkdir(parents=True)
         (demo / "index.html").write_text("<html><body>DEMO</body></html>", encoding="utf-8")
-        (demo / "node_modules" / "dep" / "x.js").write_text("x", encoding="utf-8")
+        (demo / "node_modules" / "dep" / "x.js").write_text("DEP", encoding="utf-8")
         served, conn = self.get("/", [str(demo)])
         self.assertTrue(served)
         self.assertIn(b"DEMO", conn.response()[2])
-        served, _ = self.get("/node_modules/dep/x.js", [str(demo)])
-        self.assertFalse(served)
+        served, conn = self.get("/node_modules/dep/x.js", [str(demo)])
+        self.assertTrue(served)
+        self.assertEqual(conn.response()[2], b"DEP")
 
-    def test_listing_omits_hidden_and_ignored_entries(self):
+    def test_listing_omits_hidden_entries_only(self):
         for rel in (".env", ".git/config", "node_modules/a.js", "__pycache__/m.pyc",
                     "src/app.js", "readme.txt"):
             self.write(rel)
         served, conn = self.get("/")
         body = conn.response()[2]
         self.assertTrue(served)
-        self.assertIn(b">src<", body)
-        self.assertIn(b">readme.txt<", body)
-        for name in (b".env", b".git", b"node_modules", b"__pycache__"):
+        for name in (b"src", b"readme.txt", b"node_modules", b"__pycache__"):
+            self.assertIn(b">" + name + b"<", body)
+        for name in (b".env", b".git"):
             self.assertNotIn(b">" + name + b"<", body)
 
     def test_unknown_types_are_served_inline(self):
@@ -297,6 +308,15 @@ class NotFoundSuggestionTests(ServingTestCase):
             self.assertFalse([root for root in visited if name in root], name)
             self.assertNotIn(name + "/index.html", page)
 
+    def test_project_inside_an_ignored_directory_still_gets_suggestions(self):
+        demo = self.tmp / "node_modules" / "pkg" / "examples"
+        (demo / "node_modules" / "dep").mkdir(parents=True)
+        (demo / "index.html").write_text("", encoding="utf-8")
+        (demo / "node_modules" / "dep" / "index.html").write_text("", encoding="utf-8")
+        page = ErrorPages.get_404_page("/indx.html", [str(demo)], self.settings)
+        self.assertIn('href="/index.html"', page)
+        self.assertNotIn("node_modules/dep", page)
+
     def test_browser_probes_skip_the_suggestion_walk(self):
         self.write("favicon.png")
         self.write("robots.html")
@@ -343,15 +363,15 @@ class PolicyHelperTests(unittest.TestCase):
             self.assertFalse(has_hidden_segment(rel), rel)
 
     def test_refused_path(self):
-        patterns = DEFAULT_SETTINGS["ignoreFiles"]
         root = os.path.join(os.sep, "proj")
-        refused = (".env", os.path.join(".git", "config"), os.path.join("node_modules", "x.js"),
-                   os.path.join("a", "node_modules", "pkg", "dist", "x.js"))
-        for rel in refused:
-            self.assertTrue(is_refused_path(os.path.join(root, rel), root, patterns), rel)
-        self.assertTrue(is_refused_path(os.path.join(os.sep, "elsewhere", "x"), root, patterns))
-        self.assertFalse(is_refused_path(os.path.join(root, "src", "app.js"), root, patterns))
-        self.assertFalse(is_refused_path(root, root, patterns))
+        for rel in (".env", os.path.join(".git", "config"), os.path.join("a", ".cache", "b")):
+            self.assertTrue(is_refused_path(os.path.join(root, rel), root), rel)
+        self.assertTrue(is_refused_path(os.path.join(os.sep, "elsewhere", "x"), root))
+        for rel in (os.path.join("src", "app.js"), os.path.join("node_modules", "pkg", "x.js")):
+            self.assertFalse(is_refused_path(os.path.join(root, rel), root), rel)
+        self.assertFalse(is_refused_path(root, root))
+        hidden_root = os.path.join(os.sep, "home", ".sites", "blog")
+        self.assertFalse(is_refused_path(os.path.join(hidden_root, "index.html"), hidden_root))
 
 
 if __name__ == "__main__":
