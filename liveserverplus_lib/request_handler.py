@@ -191,7 +191,7 @@ class RequestHandler:
             return
             
         # Try to serve file
-        if self.file_server.serveFile(conn, path, self.folders):
+        if self.file_server.serveFile(conn, path, self.folders, request.query_string):
             return
             
         # Generate 404 page
