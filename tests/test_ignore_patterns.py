@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _sublime_stub import fake_sublime  # noqa: E402,F401  (installs the stub)
 
-from liveserverplus_lib.ignore import matches_ignore  # noqa: E402
+from liveserverplus_lib.ignore import matches_ignore, matches_ignore_under  # noqa: E402
 
 
 DEFAULTS = ["**/node_modules/**", "**/.git/**", "**/__pycache__/**"]
@@ -61,6 +61,63 @@ class IgnorePatternTests(unittest.TestCase):
         self.assertFalse(matches_ignore("/p/x.js", []))
         self.assertFalse(matches_ignore("/p/x.js", ["", None, 3]))
         self.assertTrue(matches_ignore("/p/x.js", ["**"]))
+
+
+class IgnoreUnderRootTests(unittest.TestCase):
+    """Patterns apply below the served folder, never to its ancestors."""
+
+    def _tree(self, tmp, *parts):
+        import os
+        root = os.path.join(tmp, *parts)
+        os.makedirs(root, exist_ok=True)
+        return root
+
+    def test_project_inside_an_ignored_directory_is_not_ignored(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._tree(tmp, "node_modules", "some-lib", "examples")
+            page = os.path.join(root, "index.html")
+            nested = os.path.join(root, "node_modules", "dep", "x.js")
+
+            self.assertFalse(matches_ignore_under(page, [root], DEFAULTS))
+            self.assertFalse(matches_ignore_under(root, [root], DEFAULTS))
+            self.assertTrue(matches_ignore_under(nested, [root], DEFAULTS))
+
+    def test_pattern_matching_an_ancestor_of_the_root_does_nothing(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._tree(tmp, "build", "site")
+            page = os.path.join(root, "index.html")
+
+            self.assertFalse(matches_ignore_under(page, [root], ["build"]))
+            self.assertTrue(matches_ignore_under(os.path.join(root, "build", "a.js"), [root], ["build"]))
+
+    def test_anchored_pattern_is_relative_to_the_root(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._tree(tmp, "site")
+            self.assertTrue(matches_ignore_under(os.path.join(root, "dist", "a.js"), [root], ["/dist"]))
+            self.assertFalse(matches_ignore_under(os.path.join(root, "src", "dist", "a.js"), [root], ["/dist"]))
+
+    def test_path_outside_every_root_falls_back_to_absolute_matching(self):
+        self.assertTrue(matches_ignore_under("/elsewhere/node_modules/x.js", ["/proj"], DEFAULTS))
+        self.assertFalse(matches_ignore_under("/elsewhere/src/x.js", ["/proj"], DEFAULTS))
+
+    def test_first_containing_root_wins(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            a = self._tree(tmp, "a")
+            b = self._tree(tmp, "b")
+            f = os.path.join(b, "dist", "x.js")
+            self.assertTrue(matches_ignore_under(f, [a, b], ["/dist"]))
 
 
 if __name__ == "__main__":

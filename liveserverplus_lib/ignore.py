@@ -90,3 +90,27 @@ def matches_ignore(path: str, patterns: Iterable[str]) -> bool:
         if compiled is not None and compiled.match(normalized):
             return True
     return False
+
+
+def matches_ignore_under(path: str, roots: Iterable[str], patterns: Iterable[str]) -> bool:
+    """Match ``patterns`` against ``path`` relative to the served folder that
+    contains it.
+
+    Matching the absolute path would let an unanchored pattern match a
+    directory *above* the project, so a project opened at
+    ``.../node_modules/some-lib/examples`` would be ignored entirely by the
+    default patterns, and an anchored pattern such as ``/dist`` could never
+    match at all. A root itself never matches. A path outside every root
+    falls back to matching the absolute path.
+    """
+    if not path or not patterns:
+        return False
+
+    from .path_utils import relative_to_root  # local import: path_utils logs
+
+    rel_path = relative_to_root(path, list(roots or ()))
+    if rel_path is None:
+        return matches_ignore(path, patterns)
+    if rel_path == '':
+        return False
+    return matches_ignore(rel_path, patterns)
