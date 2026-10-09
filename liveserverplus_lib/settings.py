@@ -79,6 +79,10 @@ class ServerSettings:
     """Manages LiveServerPlus settings with project overrides."""
 
     _global_ephemeral_port: Optional[int] = None
+    # When set, the next ServerSettings takes these project overrides instead
+    # of the active window's. ServerManager sets it while it builds the server
+    # that replaces a running one, which may have come from another window.
+    inherited_project_settings: Optional[Dict[str, Any]] = None
 
     def __init__(self) -> None:
         self._settings: Optional[sublime.Settings] = None
@@ -97,14 +101,21 @@ class ServerSettings:
         """
         self._settings = sublime.load_settings('LiveServerPlus.sublime-settings')
 
-        window = sublime.active_window()
-        project_data = (window.project_data() or {}) if window else {}
-        project_settings = project_data.get('liveserverplus')
+        project_settings = ServerSettings.inherited_project_settings
+        if project_settings is None:
+            window = sublime.active_window()
+            project_data = (window.project_data() or {}) if window else {}
+            project_settings = project_data.get('liveserverplus')
         self._project_settings = copy.deepcopy(project_settings) if isinstance(project_settings, dict) else {}
 
         self._config = self._read_config()
         self._allowed_types_cache = None
         self._ephemeral_port_cache = None
+
+    @property
+    def project_settings(self) -> Dict[str, Any]:
+        """The project's "liveserverplus" overrides captured at start."""
+        return copy.deepcopy(self._project_settings)
 
     def refresh(self) -> None:
         """Re-read the settings file, keeping the values of ``RESTART_KEYS``.

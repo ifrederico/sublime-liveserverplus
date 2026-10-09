@@ -22,7 +22,7 @@ from .liveserverplus_lib import logging as lsp_logging
 from .liveserverplus_lib.path_utils import (normalize_url_path, join_base_and_path, relative_to_root,
                                              has_hidden_segment)
 from .liveserverplus_lib.buffer_cache import BufferCache
-from .liveserverplus_lib.ignore import matches_ignore
+from .liveserverplus_lib.ignore import matches_ignore_under
 from .liveserverplus_lib.settings import DEFAULT_SETTINGS
 from .liveserverplus_lib.status import ServerStatus
 from .ServerManager import ServerManager
@@ -654,7 +654,7 @@ class LiveServerPlusListener(sublime_plugin.EventListener):
     def _should_trigger(self, manager, server, file_path):
         if not file_path:
             return False
-        if matches_ignore(file_path, server.settings.ignorePatterns):
+        if matches_ignore_under(file_path, server.folders, server.settings.ignorePatterns):
             return False
 
         return manager.isFileAllowed(file_path)
@@ -1018,7 +1018,8 @@ def plugin_unloaded():
             server = manager.getServer()
             if server:
                 server.status.update('stopping')  # Changed from 'Server closing'
-            manager.stop()
+        # Also cancels a restart whose old server is still stopping.
+        manager.shutdown()
         
         # Clear singleton instance to prevent memory leaks
         ServerManager._instance = None

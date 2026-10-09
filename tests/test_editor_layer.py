@@ -291,6 +291,8 @@ class ManagerTestCase(PatchMixin, unittest.TestCase):
         self.patch(self.settings_module.ServerSettings, "_global_ephemeral_port", None)
         self.store = RecordingSettings({"port": 5500})
         self.patch(fake_sublime, "load_settings", lambda name: self.store)
+        self.errors = []
+        self.patch(fake_sublime, "error_message", self.errors.append)
         self.manager = self.sm.ServerManager()
 
 
@@ -387,6 +389,52 @@ class RestartTests(ManagerTestCase):
         self.assertTrue(self.manager.start(["/site"]))
         self.assertFalse(self.manager.start(["/other"]))
         self.assertEqual(len(FakeServer.instances), 1)
+
+    def test_manual_start_during_restart_supersedes_it_quietly(self):
+        """Start is enabled while the old server stops; that must not error."""
+        loop = self.use_loop()
+        self.manager.start(["/site"])
+        done = []
+        self.manager.restart(["/site"], on_done=done.append)
+
+        self.assertTrue(self.manager.start(["/other"]))
+        loop.settle()
+
+        self.assertEqual([s.folders for s in FakeServer.instances], [["/site"], ["/other"]])
+        self.assertIs(self.manager.getServer(), FakeServer.instances[1])
+        self.assertEqual(done, [])
+        self.assertEqual(self.errors, [])
+
+    def test_shutdown_stops_the_server_and_refuses_later_starts(self):
+        loop = self.use_loop()
+        self.manager.start(["/site"])
+
+        self.manager.shutdown()
+        loop.settle()
+
+        self.assertFalse(FakeServer.instances[0].is_alive())
+        self.assertEqual(self.store.callback_count(), 0)
+        self.assertFalse(self.manager.start(["/site"]))
+        self.assertEqual(len(FakeServer.instances), 1)
+
+    def test_plugin_unload_during_restart_leaves_no_server(self):
+        """The old server is still stopping, so nothing looks like it runs."""
+        loop = self.use_loop()
+        plugin = load("LiveServerPlus")
+        self.patch(self.sm.ServerManager, "_instance", self.manager)
+        self.manager.start(["/site"])
+        done = []
+        self.manager.restart(["/site"], on_done=done.append)
+
+        plugin.plugin_unloaded()
+        loop.settle()
+
+        self.assertEqual(len(FakeServer.instances), 1)
+        self.assertFalse(FakeServer.instances[0].is_alive())
+        self.assertIsNone(self.manager.server)
+        self.assertEqual(self.store.callback_count(), 0)
+        self.assertEqual(done, [])
+        self.assertEqual(self.errors, [])
 
 
 # ---------------------------------------------------------------------------
@@ -571,6 +619,70 @@ class SettingsWatcherTests(ManagerTestCase):
 
         self.assertEqual(len(FakeServer.instances), 1)
 
+    def test_manual_start_during_watcher_restart_shows_no_error(self):
+        self.manager.start(["/site"])
+        self.store.values["port"] = 5600
+        self.store.fire()
+        self.loop.advance(300)  # restart begins; the old server is stopping
+        self.assertFalse(self.manager.isRunning())
+
+        self.manager.start(["/other"])
+        self.loop.settle()
+
+        self.assertEqual([s.folders for s in FakeServer.instances], [["/site"], ["/other"]])
+        self.assertEqual(self.errors, [])
+
+
+class ProjectOverrideTests(ManagerTestCase):
+    """Restarts keep the project overrides of the server they replace."""
+
+    def setUp(self):
+        super().setUp()
+        self.loop = self.use_loop()
+        self.window_a = FakeWindow()
+        self.window_a.project_data = lambda: {"liveserverplus": {"port": 3000, "fullReload": True}}
+        self.window_b = FakeWindow()
+        self.active = self.window_a
+        self.patch(fake_sublime, "active_window", lambda: self.active)
+
+    def assert_project_a(self, server):
+        self.assertEqual(server.folders, ["/projA"])
+        self.assertEqual(server.settings.port, 3000)
+        self.assertTrue(server.settings.fullReload)
+
+    def test_settings_restart_from_another_window(self):
+        self.manager.start(["/projA"])
+        self.assert_project_a(self.manager.getServer())
+
+        self.active = self.window_b  # the user edits the settings in window B
+        self.store.values["ignoreFiles"] = ["dist"]
+        self.store.fire()
+        self.loop.advance(300)
+        self.loop.settle()
+
+        self.assertEqual(len(FakeServer.instances), 2)
+        self.assert_project_a(self.manager.getServer())
+
+    def test_command_restart_from_another_window(self):
+        self.manager.start(["/projA"])
+        self.active = self.window_b
+
+        self.manager.restart(["/projA"])
+        self.loop.settle()
+
+        self.assert_project_a(self.manager.getServer())
+
+    def test_manual_start_reads_the_active_windows_project(self):
+        self.manager.start(["/projA"])
+        self.manager.stop()
+        self.loop.settle()
+        self.active = self.window_b
+
+        self.manager.start(["/projB"])
+
+        self.assertEqual(self.manager.getServer().settings.port, 5500)
+        self.assertFalse(self.manager.getServer().settings.fullReload)
+
 
 # ---------------------------------------------------------------------------
 # Item 10: status bar on every view of every window
@@ -715,6 +827,9 @@ class FakeScrollManager:
     def broadcastMessage(self, message):
         self.messages.append(message)
         return True
+
+    def shutdown(self):
+        self.running = False
 
 
 class ScrollSyncPollingTests(PatchMixin, unittest.TestCase):
@@ -868,14 +983,14 @@ class IgnoreUsageTests(PatchMixin, unittest.TestCase):
         self.file_watcher = load("liveserverplus_lib.file_watcher")
         self.patch(self.file_watcher, "Observer", FakeObserver)
 
-    def make_watcher(self, folder, patterns):
+    def make_watcher(self, folder, patterns, callback=lambda path: None):
         settings = types.SimpleNamespace(
             ignorePatterns=patterns,
             ignoreDirs=[],
             allowedFileTypes=[".html", ".js"],
             maxWatchedDirs=50,
         )
-        return self.file_watcher.FileWatcher([folder], lambda path: None, settings)
+        return self.file_watcher.FileWatcher([folder], callback, settings)
 
     def test_watcher_ignores_nested_files(self):
         watcher = self.make_watcher("/site", DEFAULT_IGNORES)
@@ -901,12 +1016,54 @@ class IgnoreUsageTests(PatchMixin, unittest.TestCase):
     def test_live_reload_listener_uses_glob_semantics(self):
         plugin = load("LiveServerPlus")
         manager = types.SimpleNamespace(isFileAllowed=lambda path: True)
-        server = types.SimpleNamespace(settings=types.SimpleNamespace(ignorePatterns=DEFAULT_IGNORES))
+        server = types.SimpleNamespace(
+            folders=["/site"],
+            settings=types.SimpleNamespace(ignorePatterns=DEFAULT_IGNORES),
+        )
         listener = plugin.LiveServerPlusListener()
 
         self.assertFalse(listener._should_trigger(manager, server, "/site/node_modules/pkg/dist/a.js"))
         self.assertTrue(listener._should_trigger(manager, server, "/site/src/a.js"))
         self.assertFalse(hasattr(plugin, "_matches_ignore_patterns"))
+
+    def test_live_reload_listener_matches_below_the_served_folder(self):
+        plugin = load("LiveServerPlus")
+        manager = types.SimpleNamespace(isFileAllowed=lambda path: True)
+        root = "/work/node_modules/some-lib/examples"
+        server = types.SimpleNamespace(
+            folders=[root],
+            settings=types.SimpleNamespace(ignorePatterns=DEFAULT_IGNORES + ["/dist"]),
+        )
+        listener = plugin.LiveServerPlusListener()
+
+        self.assertTrue(listener._should_trigger(manager, server, root + "/css/app.css"))
+        self.assertTrue(listener._should_trigger(manager, server, root + "/src/dist/a.js"))
+        self.assertFalse(listener._should_trigger(manager, server, root + "/dist/a.js"))
+        self.assertFalse(listener._should_trigger(manager, server, root + "/node_modules/x/a.js"))
+
+    def test_project_inside_node_modules_is_watched(self):
+        """Patterns must not match directories above the served folder."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp, "node_modules", "some-lib", "examples").resolve()
+            (root / "css").mkdir(parents=True)
+            (root / "index.html").write_text("x", encoding="utf-8")
+            (root / "css" / "app.js").write_text("x", encoding="utf-8")
+            changes = []
+            watcher = self.make_watcher(str(root), DEFAULT_IGNORES, callback=changes.append)
+            watched = [os.path.relpath(p, str(root)) for p in watcher.observer.paths]
+
+            changed = str(root / "css" / "app.js")
+            watcher.event_handler.on_modified(types.SimpleNamespace(is_directory=False, src_path=changed))
+
+        self.assertEqual(sorted(watched), [".", "css"])
+        self.assertEqual(changes, [changed])
+
+    def test_anchored_pattern_matches_from_the_served_folder(self):
+        watcher = self.make_watcher("/site", ["/dist"])
+
+        self.assertTrue(watcher._matches_ignore("/site/dist/a.js"))
+        self.assertFalse(watcher._matches_ignore("/site/src/dist/a.js"))
+        self.assertFalse(watcher._matches_ignore("/site"))
 
 
 if __name__ == "__main__":

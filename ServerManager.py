@@ -4,6 +4,7 @@ import json
 import sublime
 import threading
 from .liveserverplus_lib.server import Server
+from .liveserverplus_lib.settings import ServerSettings
 from .liveserverplus_lib.utils import openInBrowser
 from .liveserverplus_lib.logging import info, error
 from .liveserverplus_lib.qr_utils import get_local_ip
@@ -34,22 +35,34 @@ class ServerManager:
         self._scroll_listeners = []
         self._watched_settings = None
         self._settings_check_token = 0
+        self._shut_down = False
         info("ServerManager initialized")
     
     def isRunning(self):
         """Check if server is currently running"""
         return self.server is not None and self.server.is_alive()
     
-    def start(self, folders):
-        """Start the live server with given folders"""
+    def start(self, folders, project_settings=None):
+        """Start the live server with given folders.
+
+        ``project_settings`` replaces the active window's "liveserverplus"
+        project overrides; restart() passes the running server's.
+        """
         with self._lock:
+            if self._shut_down:
+                info("Plugin unloaded; not starting a server")
+                return False
             if self.isRunning():
                 info("Server is already running")
                 return False
             
             try:
                 info(f"Starting server with folders: {folders}")
-                self.server = Server(folders)
+                ServerSettings.inherited_project_settings = project_settings
+                try:
+                    self.server = Server(folders)
+                finally:
+                    ServerSettings.inherited_project_settings = None
                 if hasattr(self.server, 'websocket'):
                     self.server.websocket.set_message_handler(self._handle_websocket_message)
                 self.server.start()
@@ -105,15 +118,34 @@ class ServerManager:
         """
         info("Restarting server...")
         folders = list(folders)
+        # Keep the project overrides of the server being replaced, whichever
+        # window is active by now.
+        old_server = self.server
+        project_settings = old_server.settings.project_settings if old_server else None
 
         def start_new_server():
-            success = self.start(folders)
+            if self._shut_down or self.isRunning():
+                # The plugin was unloaded, or the user started a server while
+                # the old one was stopping; this restart has nothing left to do.
+                info("Restart superseded; not starting another server")
+                return
+            success = self.start(folders, project_settings=project_settings)
             if on_done:
                 on_done(success)
 
         if not self.stop(on_done=start_new_server):
             start_new_server()
     
+    def shutdown(self):
+        """Stop for good (plugin unload).
+
+        Refuses later starts, including the one a restart in flight would
+        make once the old server is down, and drops the settings watcher.
+        """
+        with self._lock:
+            self._shut_down = True
+        self.stop()
+
     def getServer(self):
         """Get current server instance if running"""
         return self.server if self.isRunning() else None

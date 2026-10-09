@@ -7,7 +7,7 @@ import time
 from .vendor.watchdog.observers import Observer
 from .vendor.watchdog.observers.polling import PollingObserver
 from .vendor.watchdog.events import FileSystemEventHandler
-from .ignore import matches_ignore
+from .ignore import matches_ignore_under
 from .logging import info, error
 
 class FileWatcher(threading.Thread):
@@ -65,7 +65,7 @@ class FileWatcher(threading.Thread):
                 raise
 
     def _matches_ignore(self, path):
-        return matches_ignore(path, self._ignore_patterns)
+        return matches_ignore_under(path, self.folders, self._ignore_patterns)
 
     def _setup_observers(self, observer):
         """Set up Watchdog observers for each folder"""
