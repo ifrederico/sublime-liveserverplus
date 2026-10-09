@@ -19,7 +19,8 @@ if VENDOR_PATH not in sys.path:
 # Now the imports will work
 from .liveserverplus_lib.logging import info, error
 from .liveserverplus_lib import logging as lsp_logging
-from .liveserverplus_lib.path_utils import normalize_url_path, join_base_and_path, relative_to_root
+from .liveserverplus_lib.path_utils import (normalize_url_path, join_base_and_path, relative_to_root,
+                                             has_hidden_segment)
 from .liveserverplus_lib.buffer_cache import BufferCache
 from .liveserverplus_lib.ignore import matches_ignore
 from .liveserverplus_lib.settings import DEFAULT_SETTINGS
@@ -308,7 +309,7 @@ class LiveServerStartCommand(sublime_plugin.WindowCommand):
                 if view and view.file_name() and manager.isFileAllowed(view.file_name()):
                     file_path = view.file_name()
                     rel_path = relative_to_root(file_path, folders)
-                    if rel_path:
+                    if rel_path and not has_hidden_segment(rel_path):
                         target_path = normalize_url_path(rel_path) or '/'
 
                 def open_when_ready(path, attempt=0):
@@ -388,7 +389,11 @@ class OpenCurrentFileLiveServerCommand(sublime_plugin.WindowCommand):
                 server.folders.append(folder)
                 server.folders_set.add(folder)
             rel_path = os.path.basename(file_path)
-        
+
+        if has_hidden_segment(rel_path):
+            _status_message("Live Server does not serve dotfiles or dot-folders")
+            return
+
         # Replace backslashes with forward slashes for URL path
         url_path = normalize_url_path(rel_path)
         

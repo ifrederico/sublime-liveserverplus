@@ -53,11 +53,12 @@
     // The dev server serves the in-progress buffer snapshot, so your file is not saved until you save it.
     "wait": 100,
 
-    // Paths to ignore, using .gitignore-style globs: "**" spans any number of
-    // directories, "*" stays within one path segment, and a bare name such as
-    // "dist" also matches everything inside a directory of that name.
-    // Matching files are not watched, do not trigger Sublime live reload, and
-    // are not served (404, hidden from directory listings).
+    // Paths the file watcher and Sublime live reload ignore: changes to
+    // matching files do not trigger a reload. Uses .gitignore-style globs:
+    // "**" spans any number of directories, "*" stays within one path segment,
+    // and a bare name such as "dist" also covers everything inside a directory
+    // of that name. This does not affect what the server serves. Dotfiles and
+    // dot-folders (.env, .git/) are never served, regardless of this setting.
     "ignoreFiles": [
         "**/node_modules/**",
         "**/.git/**",

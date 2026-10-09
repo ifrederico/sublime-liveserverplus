@@ -8,12 +8,15 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         # 3.8 is what Sublime Text 4's plugin host runs; 3.12 catches
-        # anything that would break on a newer interpreter.
+        # anything that would break on a newer interpreter. The file
+        # watcher and browser launcher have per-platform code paths, and
+        # the socket tests exercise real connections, so run everywhere.
+        os: [ubuntu-22.04, macos-latest, windows-latest]
         python-version: ['3.8', '3.12']
 
     steps:
@@ -25,5 +28,5 @@ jobs:
 
       # The suite vendors everything it needs and stubs out `sublime`,
       # so there is nothing to install.
-      - name: Run regression tests
-        run: python tests/test_regressions.py -v
+      - name: Run tests
+        run: python -m unittest discover -s tests -v

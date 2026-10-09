@@ -37,11 +37,6 @@ class HTTPResponse:
         })
         return self
         
-    def add_compression_headers(self):
-        """Add compression headers"""
-        self.headers['Content-Encoding'] = 'gzip'
-        return self
-        
     def add_cache_headers(self, cache_control='no-cache, no-store, must-revalidate'):
         """Add cache control headers"""
         self.headers['Cache-Control'] = cache_control
@@ -91,22 +86,6 @@ class HTTPResponse:
             error(f"Error sending response: {e}")
             return False
             
-    def send_headers_only(self, conn):
-        """Send only headers (for HEAD requests)"""
-        try:
-            response_data = self.build()
-            # Find the end of headers (empty line)
-            headers_end = response_data.find(b'\r\n\r\n')
-            if headers_end != -1:
-                conn.sendall(response_data[:headers_end + 4])  # +4 for \r\n\r\n
-            else:
-                # Fallback if separator not found
-                conn.sendall(response_data)
-            return True
-        except Exception as e:
-            error(f"Error sending headers: {e}")
-            return False
-
 
 class HTTPRequest:
     """HTTP request parser"""
@@ -246,35 +225,27 @@ def create_error_response(status_code, message=None, body=None):
     return response
 
 
-def create_file_response(status_code=200, content=b'', mime_type='application/octet-stream', 
-                        filename=None, enable_cors=False, is_compressed=False):
+def create_file_response(status_code=200, content=b'', mime_type='application/octet-stream',
+                         enable_cors=False):
     """
     Create a file serving response with appropriate headers.
-    
+
     Args:
         status_code: HTTP status code
         content: File content (bytes)
         mime_type: MIME type
-        filename: Optional filename for Content-Disposition
         enable_cors: Whether to add CORS headers
-        is_compressed: Whether content is gzip compressed
-        
+
     Returns:
         HTTPResponse object
     """
     response = HTTPResponse(status_code)
     response.set_header('Content-Type', mime_type)
     response.set_body(content)
-    
-    if filename:
-        response.set_header('Content-Disposition', f'attachment; filename="{filename}"')
-        
+
     if enable_cors:
         response.add_cors_headers()
-        
-    if is_compressed:
-        response.add_compression_headers()
-        
+
     response.add_cache_headers()
     return response
 

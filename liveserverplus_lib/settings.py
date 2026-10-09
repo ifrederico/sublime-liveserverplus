@@ -289,10 +289,6 @@ class ServerSettings:
         return 100
 
     @property
-    def enableCompression(self) -> bool:
-        return True
-
-    @property
     def corsEnabled(self) -> bool:
         return False
 

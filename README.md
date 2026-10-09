@@ -112,7 +112,7 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
     "markdownSyntaxHighlighting": false, // highlight.js
     "markdownMath": false,               // KaTeX, $...$ and $$...$$
     "markdownMermaid": false,            // ```mermaid diagrams
-    "ignoreFiles": ["**/node_modules/**", "**/.git/**", "**/__pycache__/**"],
+    "ignoreFiles": ["**/node_modules/**", "**/.git/**", "**/__pycache__/**"], // watcher only
     "logging": false,
     "port": 5500,
     "showOnStatusbar": true,
@@ -122,7 +122,9 @@ Open a file, folder or workspace (**File ▸ Open Folder**) first.
 }
 ```
 
-Restart the server after changing settings.
+Settings take effect when you save the settings file. You do not need to restart the server yourself: if the server is running and you change `host`, `port`, `useLocalIp`, `useWebExt`, `liveReload`, `ignoreFiles`, `ignoreDirs`, `maxThreads` or `maxWatchedDirs`, Live Server Plus restarts it automatically. Every other setting applies immediately. The `liveserverplus` overrides in a `.sublime-project` are read when the server starts; restart the server after editing them.
+
+`ignoreFiles` uses `.gitignore`-style globs: `**` matches any number of directories, `*` matches within one path segment, and a bare name such as `dist` also covers everything inside a directory of that name. Ignored paths are not watched and do not trigger live reload. They are still served; see below.
 
 ### Markdown preview extras
 
@@ -153,6 +155,15 @@ Math is detected server-side, which keeps ordinary prose safe — a line like
 `it costs $5 and $10` is left alone rather than being turned into math, and
 dollar signs inside code blocks and `` `code spans` `` are never touched.
 
+### What gets served
+
+- A folder URL serves its `index.html` (or `index.htm`) with live reload; a folder without one shows a directory listing. `/docs` redirects to `/docs/` so relative links resolve.
+- Dotfiles and dot-folders (`.env`, `.git/`, `.vscode/`, …) are never served and never appear in listings.
+- Everything else in the project folder is served, including `node_modules`. `ignoreFiles` only controls which changes trigger a reload.
+- Files are served inline with their MIME type; unknown types are sent as `application/octet-stream`, which browsers download.
+- Responses are not compressed.
+- When the server stops or restarts (including the LAN, live-reload, port and QR commands), open pages keep trying to reconnect, waiting 1 s at first and up to 10 s between attempts. When the server is back, the page reloads once so it shows any changes made in the meantime.
+
 ### Local vs LAN access
 
 By default Live Server Plus is local-only:
@@ -176,7 +187,7 @@ For phone/tablet preview, run **Live Server Plus: Enable LAN Access** or set:
 
 LAN access lets devices on the same network reach your dev server. The server still opens in your desktop browser, and the mobile QR code uses your machine's LAN IP.
 
-> **Security note:** LAN access exposes the dev server to devices on your local network. Use it on trusted networks.
+> **Security note:** LAN access exposes the dev server to devices on your local network. Use it on trusted networks. Dotfiles and dot-folders such as `.env` and `.git` are never served, even with LAN access on; everything else in the project folder is reachable.
 
 ### Troubleshooting
 

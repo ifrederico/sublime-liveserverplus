@@ -152,8 +152,7 @@ class FileServer:
 
     def _serveMarkdown(self, conn, file_path):
         """Render and serve Markdown documents as HTML."""
-        if getattr(self.settings, 'logging', False):
-            info(f"Rendering Markdown preview: {file_path}")
+        info(f"Rendering Markdown preview: {file_path}")
 
         cached = self._cachedBufferFor(file_path)
         if cached is not None:
@@ -208,8 +207,7 @@ class FileServer:
             
     def _serveFile(self, conn, full_path, rel_path, base_folder):
         """Serve a single file with appropriate handling"""
-        if getattr(self.settings, 'logging', False):
-            info(f"Serving file: {full_path}")
+        info(f"Serving file: {full_path}")
         # Use comprehensive path validation and retrieve sanitized path
         safe_path = validate_and_secure_path(base_folder, rel_path)
         if not safe_path:
@@ -291,8 +289,7 @@ class FileServer:
             
         # Inject WebSocket script for HTML files
         if file_path.lower().endswith(('.html', '.htm')) and self.websocket_injector:
-            if getattr(self.settings, 'logging', False):
-                info(f"Injecting WebSocket code into {file_path}")
+            info(f"Injecting WebSocket code into {file_path}")
             content = self.websocket_injector(content)
 
         # No compression: the server is usually reached over loopback,
