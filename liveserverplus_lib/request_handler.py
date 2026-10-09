@@ -1,6 +1,5 @@
 # liveserverplus_lib/request_handler.py
 """HTTP request handling utilities"""
-import os
 import socket
 import threading
 import sublime
@@ -10,7 +9,6 @@ from .file_server import FileServer
 from .websocket import WebSocketHandler
 from .error_pages import ErrorPages
 from .text_utils import inject_before_tag
-from .path_utils import relative_to_root
 from .logging import info, error
 from .constants import IGNORED_SOCKET_ERRORS
 
@@ -206,14 +204,7 @@ class RequestHandler:
     def _send404(self, conn, path):
         """Send 404 error page"""
         try:
-            # get_404_page lists folder + path when that is a directory, with
-            # no containment check of its own; only give it the folders the
-            # raw path stays inside, so "/../" cannot list the parent.
-            folders = [
-                folder for folder in self.folders
-                if relative_to_root(os.path.join(folder, path.lstrip('/')), [folder]) is not None
-            ]
-            error_html = ErrorPages.get_404_page(path, folders, self.settings)
+            error_html = ErrorPages.get_404_page(path, self.folders, self.settings)
             
             response = HTTPResponse(404)
             response.set_header('Content-Type', 'text/html; charset=utf-8')

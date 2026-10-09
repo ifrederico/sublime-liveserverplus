@@ -41,6 +41,9 @@ class Server(threading.Thread):
         self.websocket.settings = self.settings
         self.file_watcher = None
         self._stop_flag = False
+        # Orders stop() against run()'s status updates, so nothing but
+        # 'stopped' is published once stop() has begun.
+        self._state_lock = threading.Lock()
         self.sock = None
         self.bound_host = None
         self.request_handler = None
@@ -57,25 +60,52 @@ class Server(threading.Thread):
         """Start the server"""
         try:
             info("Server starting...")
-            self.status.update('starting')
+            self._publishStatus('starting')
             self._setupSocket()
+            if self._releaseIfStopped():
+                return
             self._setupFileWatcher()
             
             # Create request handler
             self.request_handler = RequestHandler(self)
             
             # Update status
-            self.status.update('running', self.settings.port)
+            if not self._publishStatus('running', self.settings.port):
+                self._releaseIfStopped()
+                return
             info(f"Server running on {self.bound_host or self.settings.host}:{self.settings.port}")
             
             # Main connection loop
             self._acceptConnections()
             
         except Exception as e:
+            if self._releaseIfStopped():
+                return
             error(f"Critical server error: {e}")
             import traceback
             error(traceback.format_exc())
-            self.status.update('error', error=str(e))
+            self._publishStatus('error', error=str(e))
+
+    def _publishStatus(self, status, port=None, error=None):
+        """Update the status unless stop() has begun; True if published."""
+        with self._state_lock:
+            if self._stop_flag:
+                return False
+            self.status.update(status, port, error=error)
+            return True
+
+    def _releaseIfStopped(self):
+        """Close what run() set up if stop() arrived during startup.
+
+        stop() only releases the socket and watcher that exist when it runs;
+        anything run() created after that is released here. Returns True if
+        the server was stopped.
+        """
+        if not self._stop_flag:
+            return False
+        self._closeSocket()
+        self._shutdownFileWatcher()
+        return True
 
     def broadcast_message(self, message):
         """Send a custom message to all connected WebSocket clients."""
@@ -97,26 +127,28 @@ class Server(threading.Thread):
                 pass
             self.sock = None
         
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Bound and listening before it becomes self.sock, so stop() never
+        # sees (or clears) a half set-up socket.
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         
         # Add SO_REUSEPORT on systems that support it
         if hasattr(socket, 'SO_REUSEPORT'):
             try:
-                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             except (AttributeError, OSError):
                 # Not available on Windows or older systems
                 pass
         
-        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         
         # Blocking accept(); stop() wakes it by shutting the socket down
-        self.sock.setblocking(True)
+        sock.setblocking(True)
         
         # Optimize socket buffer sizes for better throughput
         try:
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)  # 64KB send buffer
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)  # 64KB receive buffer
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)  # 64KB send buffer
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)  # 64KB receive buffer
         except OSError:
             # Some systems don't allow buffer size changes
             pass
@@ -132,7 +164,7 @@ class Server(threading.Thread):
         
         while attempt < max_attempts:
             try:
-                self.sock.bind((bind_host, port))
+                sock.bind((bind_host, port))
                 self.bound_host = bind_host
                 info(f"Successfully bound to {bind_host}:{port}")
                 break
@@ -145,6 +177,9 @@ class Server(threading.Thread):
                         wait_time = attempt * 0.5
                         info(f"Port {port} is in use, waiting {wait_time}s before retry {attempt}/{max_attempts}")
                         time.sleep(wait_time)
+                        if self._stop_flag:
+                            sock.close()
+                            return
                         continue
                     
                     # Port in use, try to find a nearby port
@@ -157,11 +192,10 @@ class Server(threading.Thread):
                             if candidate > 65535:
                                 break
                             try:
-                                self.sock.bind((bind_host, candidate))
+                                sock.bind((bind_host, candidate))
                                 fallback_port = candidate
                                 info(f"Port {port} is in use. Using fallback port {candidate}.")
                                 self.settings._ephemeral_port_cache = candidate
-                                ServerSettings._global_ephemeral_port = candidate
                                 port = candidate
                                 break
                             except OSError as bind_error:
@@ -183,33 +217,32 @@ class Server(threading.Thread):
 
                     if free_port is None:
                         # Close socket before raising
-                        if self.sock:
+                        if sock:
                             try:
-                                self.sock.close()
+                                sock.close()
                             except:
                                 pass
-                            self.sock = None
+                            sock = None
                         error_msg = f"Port {port} is in use and no free port available."
-                        self.status.update('error', error=error_msg)
+                        self._publishStatus('error', error=error_msg)
                         error(error_msg)
                         sublime.error_message(f"[LiveServerPlus] {error_msg}\n\nTry choosing a different port or closing other applications using it.")
                         raise OSError(error_msg)
 
                     try:
-                        self.sock.bind((bind_host, free_port))
+                        sock.bind((bind_host, free_port))
                         info(f"Port {port} is in use. Using available port {free_port}.")
                         self.settings._ephemeral_port_cache = free_port
-                        ServerSettings._global_ephemeral_port = free_port
                         port = free_port
                         break
                     except OSError as bind_error:
                         # Close socket and reset cache before raising
-                        if self.sock:
+                        if sock:
                             try:
-                                self.sock.close()
+                                sock.close()
                             except:
                                 pass
-                            self.sock = None
+                            sock = None
                         self.settings._ephemeral_port_cache = None
                         error(f"Failed to bind to available port {free_port}: {bind_error}")
                         sublime.error_message(
@@ -219,12 +252,12 @@ class Server(threading.Thread):
                         raise
                 else:
                     # Close socket for any other error
-                    if self.sock:
+                    if sock:
                         try:
-                            self.sock.close()
+                            sock.close()
                         except:
                             pass
-                        self.sock = None
+                        sock = None
                     error(f"Unexpected error binding to port: {e}")
                     sublime.error_message(
                         "[LiveServerPlus] Unexpected error while binding to the port.\n"
@@ -232,7 +265,8 @@ class Server(threading.Thread):
                     )
                     raise
                     
-        self.sock.listen(128)  # Increase backlog for better connection handling
+        sock.listen(128)  # Increase backlog for better connection handling
+        self.sock = sock
 
     def _setupFileWatcher(self):
         """Set up file watcher based on settings"""
@@ -248,8 +282,9 @@ class Server(threading.Thread):
             return
 
         info("Starting Watchdog FileWatcher")
-        self.file_watcher = FileWatcher(self.folders, self.onFileChange, self.settings)
-        self.file_watcher.start()
+        watcher = FileWatcher(self.folders, self.onFileChange, self.settings)
+        watcher.start()
+        self.file_watcher = watcher
 
     def _acceptConnections(self):
         """Main connection acceptance loop"""
@@ -279,6 +314,8 @@ class Server(threading.Thread):
 
     def onFileChange(self, file_path):
         """Handle file changes by notifying WebSocket clients"""
+        if self._stop_flag:
+            return
         filename = os.path.basename(file_path)
         info(f"File changed: {filename}")
         self.websocket.notifyClients(file_path)
@@ -288,15 +325,17 @@ class Server(threading.Thread):
 
     def stop(self):
         """Stop the server with controlled cleanup"""
-        if self._stop_flag:
-            return
-            
-        info("Initiating server shutdown...")
-        self.status.update('stopping')
-        self._stop_flag = True
+        with self._state_lock:
+            if self._stop_flag:
+                return
+            info("Initiating server shutdown...")
+            self.status.update('stopping')
+            self._stop_flag = True
 
-        # Stop accepting first so no new connection is handed to the
-        # executor after it has been shut down.
+        # No reload may reach a browser from here on: it would reload the
+        # tab against a closing port. Then stop accepting, so no new
+        # connection is handed to the executor after it has been shut down.
+        self.websocket.stopNotifying()
         self._closeSocket()
         self._shutdownExecutor()
         self._shutdownFileWatcher()
@@ -368,15 +407,17 @@ class Server(threading.Thread):
     def _closeSocket(self):
         """Close the main server socket"""
         info("Closing main server socket...")
-        if self.sock:
+        # Read once: run() and stop() may both get here, and closing the
+        # same socket twice is harmless.
+        sock, self.sock = self.sock, None
+        if sock:
             # shutdown() wakes the accept() blocked in run(); on Linux close()
             # alone leaves that thread waiting and the port still listening.
             try:
-                self.sock.shutdown(socket.SHUT_RDWR)
+                sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
             try:
-                self.sock.close()
+                sock.close()
             except:
                 pass
-            self.sock = None

@@ -19,13 +19,17 @@ from liveserverplus_lib.request_handler import (  # noqa: E402
     MAX_REQUEST_HEAD,
     _HeadOnlyConnection,
 )
+from liveserverplus_lib import server as server_module  # noqa: E402
 from liveserverplus_lib.server import Server  # noqa: E402
 from liveserverplus_lib.settings import ServerSettings  # noqa: E402
+from liveserverplus_lib.websocket import WebSocketHandler  # noqa: E402
 
-# liveReload mode skips the Watchdog observer; port 0 picks a free port.
+# liveReload mode skips the Watchdog observer; port 0 picks a free port;
+# wait 0 makes a file change broadcast at once instead of after a debounce.
 SERVER_SETTINGS = {
     "liveReload": True,
     "port": 0,
+    "wait": 0,
     "showOnStatusbar": False,
     "showInfoMessages": False,
     "openBrowser": False,
@@ -170,6 +174,26 @@ class WebSocketShutdownTests(unittest.TestCase):
         self.assertEqual(self.server.websocket.clients, set())
         self.assertEqual(self.server.connection_manager.active_connections, set())
 
+    def test_no_reload_is_sent_once_stop_has_begun(self):
+        """A reload sent while the port closes strands the tab on an error page."""
+        ws, _ = open_websocket(self.port)
+        self.addCleanup(ws.close)
+        self.assertTrue(wait_for(lambda: len(self.server.websocket.clients) == 1))
+        changed = str(Path(self._tmp.name, "index.html"))
+
+        def file_saved_while_stopping():
+            # Runs where stop() waits for the watcher: the listening socket is
+            # already closed and the clients are not yet.
+            self.server.onFileChange(changed)
+            self.server.websocket.notifyClients(changed)
+            self.server.broadcast_message("reload")
+
+        self.server._shutdownFileWatcher = file_saved_while_stopping
+        self.server.stop()
+
+        ws.settimeout(1.0)
+        self.assertEqual(read_until_closed(ws), CLOSE_GOING_AWAY)
+
     def test_oversized_incoming_frame_closes_the_connection(self):
         ws, _ = open_websocket(self.port)
         self.addCleanup(ws.close)
@@ -234,12 +258,12 @@ class HttpTests(unittest.TestCase):
         self.assertIn(b"Double dot", decoded_body(headers, body))
 
     def test_parent_segment_cannot_reach_outside_the_root(self):
-        """The 404 page lists directories; it must not list the root's parent."""
+        """A ".." segment, raw or percent-encoded, never lists anything outside."""
         status, headers, body = request(self.port, "GET", "/../")
         self.assertTrue(status.startswith("HTTP/1.1 4"), status)
         self.assertFalse(
             b"outside-the-root" in decoded_body(headers, body),
-            "the 404 page listed the directory above the root",
+            "/../ listed the directory above the root",
         )
 
         for target in ("/../outside-the-root/", "/%2e%2e/outside-the-root/"):
@@ -298,6 +322,131 @@ class HttpTests(unittest.TestCase):
             status, _, _ = parse_response(read_until_closed(sock))
 
         self.assertEqual(status, "HTTP/1.1 431 Request Header Fields Too Large")
+
+
+class WebSocketHandlerTests(unittest.TestCase):
+    def test_no_debounced_reload_is_scheduled_after_stop_notifying(self):
+        handler = WebSocketHandler()
+        handler.settings = mock.Mock(fullReload=True, waitTimeMs=50)
+
+        handler.stopNotifying()
+        handler.notifyClients("/site/index.html")
+
+        self.assertIsNone(handler._pending_timer)
+
+
+class _InsteadOfSleep:
+    """Stands in for server.py's ``time`` module: sleep() calls ``action``."""
+
+    def __init__(self, action):
+        self._action = action
+
+    def sleep(self, seconds):
+        self._action()
+
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+
+class ServerLifecycleTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        ServerSettings._global_ephemeral_port = None
+        self.threads_before = set(threading.enumerate())
+
+    def _server(self, **settings):
+        with mock.patch.dict(FakeSettings.values, settings):
+            server = Server([self._tmp.name])
+        self.addCleanup(server.stop)
+        statuses = []
+        update = server.status.update
+
+        def record(status, *args, **kwargs):
+            statuses.append(status)
+            update(status, *args, **kwargs)
+
+        server.status.update = record
+        return server, statuses
+
+    def _new_threads(self):
+        return [t for t in threading.enumerate() if t not in self.threads_before and t.is_alive()]
+
+    def _assert_stopped_cleanly(self, server, statuses, port):
+        server.join(5)
+        self.assertFalse(server.is_alive())
+        self.assertEqual(statuses[-1], "stopped", statuses)
+        self.assertNotIn("running", statuses)
+        self.assertNotIn("error", statuses)
+        self.assertIsNone(server.sock)
+        self.assertTrue(wait_for(lambda: not self._new_threads(), 5), self._new_threads())
+        with self.assertRaises(OSError):
+            socket.create_connection(("127.0.0.1", port), timeout=1).close()
+
+    def test_stop_before_the_socket_is_bound(self):
+        """The port used to stay bound, listening, with nobody accepting."""
+        server, statuses = self._server(liveReload=False)
+        setup_socket = server._setupSocket
+
+        def stop_then_bind():
+            server.stop()
+            setup_socket()
+
+        server._setupSocket = stop_then_bind
+        server.start()
+
+        self._assert_stopped_cleanly(server, statuses, server.settings.port)
+
+    def test_stop_before_the_file_watcher_starts(self):
+        """The watcher used to start anyway and outlive the server."""
+        server, statuses = self._server(liveReload=False)
+        setup_watcher = server._setupFileWatcher
+
+        def stop_then_watch():
+            server.stop()
+            setup_watcher()
+
+        server._setupFileWatcher = stop_then_watch
+        server.start()
+
+        self._assert_stopped_cleanly(server, statuses, server.settings.port)
+
+    def test_stop_while_waiting_for_a_busy_port(self):
+        """The retry used to bind a cleared socket and report an error after 'stopped'."""
+        blocker = socket.socket()
+        self.addCleanup(blocker.close)
+        blocker.bind(("127.0.0.1", 0))
+        blocker.listen(1)
+        busy_port = blocker.getsockname()[1]
+        server, statuses = self._server(port=busy_port)
+
+        # The first back-off sleep before retrying the busy port stops the server.
+        with mock.patch.object(server_module, "time", _InsteadOfSleep(server.stop)):
+            server.start()
+            server.join(5)
+
+        self.assertEqual(statuses, ["starting", "stopping", "stopped"])
+        self.assertIsNone(server.sock)
+        self.assertTrue(wait_for(lambda: not self._new_threads(), 5), self._new_threads())
+
+    def test_fallback_port_is_not_reused_for_a_random_port(self):
+        """Only a random port (port 0) is kept across restarts, never a fallback."""
+        blocker = socket.socket()
+        self.addCleanup(blocker.close)
+        blocker.bind(("127.0.0.1", 0))
+        blocker.listen(1)
+        busy_port = blocker.getsockname()[1]
+        server, _ = self._server(port=busy_port)
+
+        with mock.patch.object(server_module, "time", _InsteadOfSleep(lambda: None)):
+            server.start()
+            self.assertTrue(wait_for(lambda: server.status.getCurrentStatus()[0] == "running"))
+
+        fallback_port = server.status.getCurrentStatus()[1]
+        self.assertNotEqual(fallback_port, busy_port)
+        self.assertEqual(server.settings.port, fallback_port)
+        self.assertIsNone(ServerSettings._global_ephemeral_port)
+        self.assertNotEqual(ServerSettings().port, fallback_port)
 
 
 class HeadOnlyConnectionTests(unittest.TestCase):

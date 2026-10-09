@@ -39,6 +39,8 @@ class WebSocketHandler:
         self._close_frame = bytes([0x88, 0x02]) + struct.pack('>H', 1001)
         self._pending_timer = None
         self._pending_message = None
+        # Set by stopNotifying() when the server stops; no message goes out after
+        self._closing = False
 
     @property
     def settings(self):
@@ -117,6 +119,8 @@ class WebSocketHandler:
             return
 
         with self._timer_lock:
+            if self._closing:
+                return
             if message == 'reload':
                 self._pending_message = 'reload'
             elif self._pending_message != 'reload':
@@ -137,6 +141,9 @@ class WebSocketHandler:
         self._broadcast(message)
 
     def _broadcast(self, message):
+        if self._closing:
+            return
+
         # Build the frame for all clients
         try:
             frame = self._createWebSocketFrame(message)
@@ -321,19 +328,29 @@ class WebSocketHandler:
         frame.extend(payload)
         return bytes(frame)
 
+    def stopNotifying(self):
+        """Cancel any pending reload and drop every later message.
+
+        The server calls this first when it stops: a reload that reaches a
+        browser while the port is closing reloads the tab into an error page
+        that has no live-reload script left to reconnect with.
+        """
+        with self._timer_lock:
+            self._closing = True
+            if self._pending_timer:
+                self._pending_timer.cancel()
+                self._pending_timer = None
+            self._pending_message = None
+
     def shutdown(self, timeout=1.0):
-        """Cancel any pending reload and disconnect every client.
+        """Stop notifying and disconnect every client.
 
         Each client is sent a close frame and its socket is shut down, which
         wakes the worker thread blocked reading it; that thread unregisters
         the client and closes the socket. Sockets still registered after
         ``timeout`` seconds are closed here instead.
         """
-        with self._timer_lock:
-            if self._pending_timer:
-                self._pending_timer.cancel()
-                self._pending_timer = None
-            self._pending_message = None
+        self.stopNotifying()
 
         with self._lock:
             clients = list(self.clients)
