@@ -16,7 +16,6 @@ BASE_MARKDOWN_EXTRAS: Tuple[str, ...] = (
     "fenced-code-blocks",
     "tables",
     "strike",
-    "break-on-newline",
     "code-friendly",
     "task_list",
     "alerts",      # GitHub "> [!NOTE]" callouts
@@ -202,13 +201,6 @@ body.light {
     margin: 0;
 }
 
-/* `break-on-newline` turns the newline after the "[!NOTE]" marker into a
-   <br>, leaving a blank line between the title and the body. Only that
-   leading break is spurious — breaks between body lines are wanted. */
-.markdown-body .alert > p:first-of-type > br:first-child {
-    display: none;
-}
-
 /* Info "i" in a disc. */
 .markdown-body .alert.note {
     --alert-accent: #58a6ff;
@@ -297,10 +289,11 @@ _MATH_TOKEN_RE = re.compile(r"zqLSPMATH(\d+)HTAMPSLqz")
 def _protect_math(text: str) -> Tuple[str, List[Tuple[str, str, bool]]]:
     """Replace math spans with inert placeholders.
 
-    ``break-on-newline`` inserts ``<br />`` at every single newline, which
-    would land inside multi-line ``$$...$$`` blocks and stop KaTeX from
-    parsing them. Pulling math out before conversion and restoring it
-    afterwards keeps the delimiters intact whatever the extras do.
+    Markdown would otherwise read TeX as markup: ``$a*b*c$`` gains an
+    ``<em>``, the ``\\\\`` row separator collapses to a single backslash,
+    and two trailing spaces inside ``$$...$$`` become ``<br />``. Pulling
+    math out before conversion and restoring it afterwards keeps the
+    source intact whatever the extras do.
 
     Returns the rewritten text plus one ``(original, tex, is_display)``
     entry per span, where ``tex`` has the delimiters stripped.
@@ -371,8 +364,7 @@ def _escape_html_attr(value: str) -> str:
 # latter all the time, with mismatched tags in a centred header, a `<details>`
 # wrapped around a fenced code block, or a `<p align="center">` indented by two
 # spaces, and every one of those made markdown2 lose the plot: either the rest
-# of the file came out as raw text, or a `<p>` got wrapped around the HTML with
-# `<br />` after every line.
+# of the file came out as raw text, or a `<p>` got wrapped around the HTML.
 #
 # The pass below finds the blocks by the spec's seven start/end conditions and
 # hands each one to markdown2's own hash table before its heuristics run. What

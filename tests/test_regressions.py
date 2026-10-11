@@ -107,13 +107,12 @@ class MarkdownPreviewTests(unittest.TestCase):
         _, fenced = _protect_math("```sh\necho $HOME $PATH\n```")
         self.assertEqual(fenced, [])
 
-    def test_display_math_survives_break_on_newline(self):
-        """`break-on-newline` would otherwise put <br> inside $$...$$."""
-        html = self._render("$$\n\\int_0^1 x^2 dx\n$$", math=True)
+    def test_display_math_is_not_read_as_markdown(self):
+        """Markdown would add <em> for `*b*` and collapse `\\\\` to `\\`."""
+        html = self._render("$$\na*b*c \\\\\nd\n$$", math=True)
 
-        start = html.index("$$")
-        end = html.index("$$", start + 2)
-        self.assertNotIn("<br", html[start:end])
+        self.assertIn('data-lsp-tex="\na*b*c \\\\\nd\n"', html)
+        self.assertNotIn("<em>", html)
 
     def test_math_is_escaped_so_it_cannot_break_the_document(self):
         html = self._render("Compare $a < b$ now.", math=True)
@@ -152,20 +151,20 @@ class MarkdownPreviewTests(unittest.TestCase):
         self.assertIn('class="alert warning"', html)
         self.assertIn('id="heading"', html)
 
-    def test_alert_body_leading_break_is_suppressed(self):
-        """`break-on-newline` puts a <br> right after the alert title.
+    def test_single_newlines_do_not_break_lines(self):
+        """GitHub joins the lines of a paragraph in a README (issue #9).
 
-        markdown2 emits `<em>Warning</em>\\n<p><br>\\n  Careful.</p>`, and
-        that leading break renders as a blank line under the title. It is
-        hidden in CSS rather than stripped from the markup so that breaks
-        between the body's own lines still work.
+        Breaking on every newline made hard-wrapped prose look narrower
+        than the HTML header above it.
         """
-        html = self._render("> [!WARNING]\n> Careful.")
+        html = self._render("Wrapped at\nseventy columns.\n\n> [!NOTE]\n> Body.")
 
-        self.assertIn("<p><br", html)
-        self.assertIn(
-            ".markdown-body .alert > p:first-of-type > br:first-child", html
-        )
+        self.assertNotIn("<br", html)
+
+    def test_two_trailing_spaces_still_break_the_line(self):
+        html = self._render("First line  \nSecond line")
+
+        self.assertIn("First line<br />", html)
 
     def test_alerts_use_an_icon_instead_of_a_side_rule(self):
         """Alerts are marked by an icon in front of the title, not a bar."""
@@ -245,7 +244,7 @@ class MarkdownHtmlBlockTests(unittest.TestCase):
         self.assertNotIn("[library](", body)
 
     def test_html_block_is_passed_through_verbatim(self):
-        """No <p> around it and no <br /> from break-on-newline inside it."""
+        """No <p> around it and no <br /> inside it."""
         body = self._body(self.GHOSTTY_HEADER)
         block = body[: body.index("<h2")]
 
@@ -299,7 +298,7 @@ class MarkdownHtmlBlockTests(unittest.TestCase):
         """Condition 7 of the spec: `<img>` right under text stays in it."""
         self.assertEqual(
             self._body('Some text\n<img src="x.png">\n'),
-            '<p>Some text<br />\n<img src="x.png"></p>',
+            '<p>Some text\n<img src="x.png"></p>',
         )
         self.assertEqual(
             self._body('Some text\n\n<img src="x.png">\n\nMore\n'),
