@@ -72,16 +72,6 @@ class ServerManager:
                 sublime.error_message(f"[LiveServerPlus] Error stopping server: {e}")
                 return False
     
-    def restart(self, folders):
-        """Restart the server with possibly new folders"""
-        with self._lock:
-            info("Restarting server...")
-            was_running = self.isRunning()
-            if was_running:
-                self.stop()
-            success = self.start(folders)
-            return success and was_running
-    
     def getServer(self):
         """Get current server instance if running"""
         return self.server if self.isRunning() else None
