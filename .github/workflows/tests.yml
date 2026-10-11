@@ -25,5 +25,5 @@ jobs:
 
       # The suite vendors everything it needs and stubs out `sublime`,
       # so there is nothing to install.
-      - name: Run regression tests
-        run: python tests/test_regressions.py -v
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
