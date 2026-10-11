@@ -547,6 +547,92 @@ class BrowserLaunchTests(unittest.TestCase):
         self.assertIn("Application isn't running", message)
 
 
+class LocalIpTests(unittest.TestCase):
+    """get_local_ip must return an address a phone on the Wi-Fi can reach.
+
+    It used to return whatever address the route to the internet used,
+    which under a VPN is the tunnel's 100.64.x.x address: unreachable from
+    the LAN and, with most VPN clients, refused even on the machine itself.
+    """
+
+    def _patched(self, towards, hostname=(), listed=()):
+        from liveserverplus_lib import qr_utils
+
+        originals = (
+            qr_utils._source_address_towards,
+            qr_utils._hostname_addresses,
+            qr_utils._listed_addresses,
+        )
+        qr_utils._source_address_towards = lambda destination: towards.get(destination)
+        qr_utils._hostname_addresses = lambda: list(hostname)
+        qr_utils._listed_addresses = listed if callable(listed) else lambda: list(listed)
+
+        def restore():
+            (qr_utils._source_address_towards,
+             qr_utils._hostname_addresses,
+             qr_utils._listed_addresses) = originals
+
+        self.addCleanup(restore)
+        return qr_utils
+
+    def test_lan_ranges_only(self):
+        from liveserverplus_lib.qr_utils import _is_lan_address
+
+        for ip in ("192.168.1.167", "10.0.0.5", "172.16.0.9", "172.31.255.1"):
+            self.assertTrue(_is_lan_address(ip), ip)
+        for ip in ("100.64.100.6", "169.254.218.91", "127.0.0.1", "172.32.0.1", "8.8.8.8", "", "nope"):
+            self.assertFalse(_is_lan_address(ip), ip)
+
+    def test_lan_address_wins_over_the_vpn_tunnel(self):
+        """The exact situation seen on a Mac with a VPN up: every route
+        reports the tunnel, the hostname does not resolve, and only the
+        interface listing knows about en0."""
+        qr_utils = self._patched(
+            towards={"8.8.8.8": "100.64.100.6", "224.0.0.1": "100.64.100.6", "255.255.255.255": None},
+            listed=["127.0.0.1", "192.168.1.167", "169.254.218.91", "100.64.100.6"],
+        )
+
+        self.assertEqual(qr_utils.get_local_ip(), "192.168.1.167")
+
+    def test_multicast_route_is_tried_before_the_interface_listing(self):
+        def listing_must_not_run():
+            raise AssertionError("listing consulted although a cheaper source had a LAN address")
+
+        qr_utils = self._patched(
+            towards={"8.8.8.8": "100.64.100.6", "224.0.0.1": "192.168.1.167"},
+            listed=listing_must_not_run,
+        )
+
+        self.assertEqual(qr_utils.get_local_ip(), "192.168.1.167")
+
+    def test_without_a_vpn_the_internet_route_is_used_as_before(self):
+        qr_utils = self._patched(towards={"8.8.8.8": "192.168.1.5"}, listed=["10.9.9.9"])
+
+        self.assertEqual(qr_utils.get_local_ip(), "192.168.1.5")
+
+    def test_tunnel_address_is_the_last_resort_before_loopback(self):
+        """A machine reachable only over Tailscale still gets its 100.x address."""
+        only_vpn = self._patched(towards={"8.8.8.8": "100.64.100.6"}, listed=["127.0.0.1", "100.64.100.6"])
+        self.assertEqual(only_vpn.get_local_ip(), "100.64.100.6")
+
+        nothing = self._patched(towards={}, listed=[])
+        self.assertEqual(nothing.get_local_ip(), "127.0.0.1")
+
+    def test_interface_listings_of_each_platform_are_parsed(self):
+        from liveserverplus_lib.qr_utils import _ADDRESS_RE
+
+        samples = {
+            "macOS ifconfig": "en0: flags=8863<UP> mtu 1500\n\tinet6 fe80::1%en0 prefixlen 64\n"
+                              "\tinet 192.168.1.167 netmask 0xffffff00 broadcast 192.168.1.255\n",
+            "Linux ip -o": "2: eth0    inet 192.168.1.167/24 brd 192.168.1.255 scope global eth0\\       valid_lft forever\n",
+            "old Linux ifconfig": "eth0      Link encap:Ethernet\n          inet addr:192.168.1.167  Bcast:192.168.1.255\n",
+            "Windows ipconfig": "   IPv4 Address. . . . . . . . . . . : 192.168.1.167\r\n",
+            "German ipconfig": "   IPv4-Adresse  . . . . . . . . . . : 192.168.1.167\r\n",
+        }
+        for name, text in samples.items():
+            self.assertEqual(_ADDRESS_RE.findall(text), ["192.168.1.167"], name)
+
+
 class QrUrlTests(unittest.TestCase):
     def test_qr_urls_use_lan_ip_for_localhost_server(self):
         from liveserverplus_lib import qr_utils
