@@ -77,6 +77,7 @@ class Server(threading.Thread):
             import traceback
             error(traceback.format_exc())
             self.status.update('error', error=str(e))
+            self._closeSocket()
 
     def broadcast_message(self, message):
         """Send a custom message to all connected WebSocket clients."""
@@ -250,24 +251,39 @@ class Server(threading.Thread):
 
     def _acceptConnections(self):
         """Main connection acceptance loop"""
-        while not self._stop_flag:
-            try:
-                conn, addr = self.sock.accept()
+        try:
+            while not self._stop_flag:
+                try:
+                    conn, addr = self.sock.accept()
 
-                if self.connection_manager.addConnection(conn, addr):
-                    # Submit to thread pool
-                    self.executor.submit(
-                        self.request_handler.handleConnection,
-                        conn,
-                        addr
-                    )
-                else:
-                    # Connection limit reached
-                    conn.close()
-                    
-            except Exception as e:
-                if not self._stop_flag:
-                    error(f"Error accepting connection: {e}")
+                    if self._stop_flag:
+                        conn.close()
+                        break
+
+                    if not self.connection_manager.addConnection(conn, addr):
+                        # Connection limit reached
+                        conn.close()
+                        continue
+
+                    try:
+                        self.executor.submit(
+                            self.request_handler.handleConnection,
+                            conn,
+                            addr
+                        )
+                    except RuntimeError:
+                        # The executor was shut down between accept and submit.
+                        # Nothing will serve this socket, so give its slot back.
+                        self.connection_manager.removeConnection(conn)
+                        conn.close()
+
+                except Exception as e:
+                    if not self._stop_flag:
+                        error(f"Error accepting connection: {e}")
+        finally:
+            # This thread owns the listening socket, so it closes it. See
+            # _wakeAcceptLoop for why stop() does not.
+            self._closeSocket()
 
     def onFileChange(self, file_path):
         """Handle file changes by notifying WebSocket clients"""
@@ -290,7 +306,7 @@ class Server(threading.Thread):
         self._shutdownExecutor()
         self._shutdownFileWatcher()
         self._cleanupConnections()
-        self._closeSocket()
+        self._wakeAcceptLoop()
 
         # Drop any in-memory buffer snapshots so a subsequent start (or
         # external edit while stopped) cannot be shadowed by stale bytes.
@@ -347,12 +363,38 @@ class Server(threading.Thread):
         info("File watcher shutdown complete")
 
     def _cleanupConnections(self):
-        """Clean up WebSocket and connection threads"""
+        """Close WebSocket clients so their worker threads can exit."""
         info("Closing WebSocket connections...")
         self.websocket.shutdown()
-        self.websocket.clients.clear()
 
-        info("Cleaning up connection threads...")
+    def _wakeAcceptLoop(self):
+        """Make the accept loop notice _stop_flag, then let it close the socket.
+
+        Closing the socket from here would be wrong twice over: on Linux
+        close() does not wake a thread blocked in accept(), and on every
+        platform it frees the descriptor number while the server thread
+        may be about to call accept() on it, so a socket opened a moment
+        later (the next server's, on a restart) could be handed to the
+        old loop. Connecting to our own port instead makes accept()
+        return, the loop sees the flag, and the thread closes its socket
+        itself.
+        """
+        if not self.sock or not self.is_alive():
+            self._closeSocket()
+            return
+
+        host = self.bound_host
+        if host in (None, '0.0.0.0'):
+            host = '127.0.0.1'
+        try:
+            socket.create_connection((host, self.port), timeout=1).close()
+        except OSError as e:
+            info(f"Could not connect to wake the accept loop: {e}")
+
+        self.join(2)
+        if self.is_alive():
+            info("Accept loop did not exit in time, closing the socket from here")
+            self._closeSocket()
 
     def _closeSocket(self):
         """Close the main server socket"""

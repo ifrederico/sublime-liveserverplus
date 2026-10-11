@@ -19,6 +19,7 @@ class WebSocketHandler:
         self._lock = threading.Lock()
         self._timer_lock = threading.Lock()
         self._settings_lock = threading.Lock()
+        self._send_lock = threading.Lock()
         self._message_handler = None
 
         # Settings reference provided by the server
@@ -144,32 +145,50 @@ class WebSocketHandler:
             return
 
         dead_clients = []
-        for client in active_clients:
-            try:
-                client.settimeout(1.0)
-                client.send(frame)
-                client.settimeout(None)
-            except (socket.error, OSError, socket.timeout) as e:
-                info(f"Error sending to client: {e}")
-                dead_clients.append(client)
-            except Exception as e:
-                error(f"Unexpected error sending to WebSocket client: {e}")
-                dead_clients.append(client)
+        # One broadcast at a time: the file watcher, the debounce timer and
+        # scroll sync all end up here, and the timeout juggling below must
+        # not interleave between them.
+        with self._send_lock:
+            for client in active_clients:
+                try:
+                    # Cap the send so a stalled client cannot hold up the
+                    # broadcast, then put the timeout back. The worker thread
+                    # reading this socket relies on it; clearing it left that
+                    # thread blocked for ever once the server stopped.
+                    previous_timeout = client.gettimeout()
+                    client.settimeout(1.0)
+                    try:
+                        client.sendall(frame)
+                    finally:
+                        client.settimeout(previous_timeout)
+                except (socket.error, OSError, socket.timeout) as e:
+                    info(f"Error sending to client: {e}")
+                    dead_clients.append(client)
+                except Exception as e:
+                    error(f"Unexpected error sending to WebSocket client: {e}")
+                    dead_clients.append(client)
 
         if dead_clients:
             with self._lock:
                 for client in dead_clients:
                     self.clients.discard(client)
-                    try:
-                        client.shutdown(socket.SHUT_RDWR)
-                    except (socket.error, OSError):
-                        pass
-                    finally:
-                        try:
-                            client.close()
-                        except Exception:
-                            pass
+                    self._disconnect(client)
             info(f"Removed {len(dead_clients)} dead WebSocket clients")
+
+    @staticmethod
+    def _disconnect(client):
+        """Hang up on a client without closing its socket.
+
+        Each client socket is read by a worker thread, and that thread is
+        the one that closes it. shutdown() makes its recv return EOF so it
+        exits; closing here as well would free the descriptor number while
+        the worker may be about to use it, and the next socket to open
+        could inherit the number and the worker with it.
+        """
+        try:
+            client.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
 
     def broadcast_message(self, message):
         """Public helper to broadcast arbitrary text messages."""
@@ -311,8 +330,22 @@ class WebSocketHandler:
         return bytes(frame)
 
     def shutdown(self):
+        """Cancel the pending broadcast and hang up on every client.
+
+        Each client has a worker thread blocked in recv on it. Hanging up
+        wakes that thread so it can exit and release its connection slot,
+        and the browser sees the close and reconnects, which is how an
+        open tab finds the next server instance.
+        """
         with self._timer_lock:
             if self._pending_timer:
                 self._pending_timer.cancel()
                 self._pending_timer = None
             self._pending_message = None
+
+        with self._lock:
+            clients = list(self.clients)
+            self.clients.clear()
+
+        for client in clients:
+            self._disconnect(client)
