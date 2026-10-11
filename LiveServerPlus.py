@@ -139,7 +139,7 @@ class LiveServerShowQrCommand(sublime_plugin.WindowCommand):
         # Get server info
         protocol = 'http'
         prefer_local = configured_host in ['localhost', '127.0.0.1', '0.0.0.0']
-        port = server.settings.port
+        port = getattr(server, 'port', None) or server.settings.port
 
         # Get URLs
         urls = get_server_urls(configured_host, port, protocol=protocol, prefer_local_ip=prefer_local)

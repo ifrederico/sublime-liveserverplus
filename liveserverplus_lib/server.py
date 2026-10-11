@@ -43,6 +43,9 @@ class Server(threading.Thread):
         self._stop_flag = False
         self.sock = None
         self.bound_host = None
+        # The port actually listening. Differs from settings.port after a
+        # fallback, and is deliberately not written back into the settings.
+        self.port = None
         self.request_handler = None
 
         # Initialize managers
@@ -63,8 +66,8 @@ class Server(threading.Thread):
             self.request_handler = RequestHandler(self)
             
             # Update status
-            self.status.update('running', self.settings.port)
-            info(f"Server running on {self.bound_host or self.settings.host}:{self.settings.port}")
+            self.status.update('running', self.port)
+            info(f"Server running on {self.bound_host or self.settings.host}:{self.port}")
             
             # Main connection loop
             self._acceptConnections()
@@ -158,8 +161,6 @@ class Server(threading.Thread):
                                 self.sock.bind((bind_host, candidate))
                                 fallback_port = candidate
                                 info(f"Port {port} is in use. Using fallback port {candidate}.")
-                                self.settings._ephemeral_port_cache = candidate
-                                ServerSettings._global_ephemeral_port = candidate
                                 port = candidate
                                 break
                             except OSError as bind_error:
@@ -196,19 +197,16 @@ class Server(threading.Thread):
                     try:
                         self.sock.bind((bind_host, free_port))
                         info(f"Port {port} is in use. Using available port {free_port}.")
-                        self.settings._ephemeral_port_cache = free_port
-                        ServerSettings._global_ephemeral_port = free_port
                         port = free_port
                         break
                     except OSError as bind_error:
-                        # Close socket and reset cache before raising
+                        # Close socket before raising
                         if self.sock:
                             try:
                                 self.sock.close()
                             except:
                                 pass
                             self.sock = None
-                        self.settings._ephemeral_port_cache = None
                         error(f"Failed to bind to available port {free_port}: {bind_error}")
                         sublime.error_message(
                             "[LiveServerPlus] Could not bind to any port.\n"
@@ -229,7 +227,8 @@ class Server(threading.Thread):
                         f"Details: {e}"
                     )
                     raise
-                    
+
+        self.port = port
         self.sock.listen(128)  # Increase backlog for better connection handling
 
     def _setupFileWatcher(self):

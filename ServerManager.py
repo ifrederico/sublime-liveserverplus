@@ -117,11 +117,8 @@ class ServerManager:
         else:
             host = server.settings.host or '127.0.0.1'
 
-        status_port = None
-        if hasattr(server, 'status'):
-            status_port = server.status.getCurrentStatus()[1]
-
-        port = status_port or server.settings.port
+        # The bound port, which differs from the setting after a fallback.
+        port = getattr(server, 'port', None) or server.settings.port
         browser = browser or server.settings.customBrowser
 
         base_url = build_base_url(protocol, host, port)

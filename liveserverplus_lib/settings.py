@@ -64,13 +64,16 @@ def _deep_merge(target: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, 
 class ServerSettings:
     """Manages LiveServerPlus settings with project overrides."""
 
+    # The random port picked for "port": 0. Shared by every instance so the
+    # server comes back on the same port after a restart and open tabs keep
+    # a working URL. A configured port is never stored here: doing so froze
+    # the port for the whole session and made "Change Port..." a no-op.
     _global_ephemeral_port: Optional[int] = None
 
     def __init__(self) -> None:
         self._settings: Optional[sublime.Settings] = None
         self._config: Dict[str, Any] = {}
         self._allowed_types_cache: Optional[set[str]] = None
-        self._ephemeral_port_cache: Optional[int] = None
         self.load_settings()
 
     def load_settings(self) -> None:
@@ -114,7 +117,6 @@ class ServerSettings:
 
         self._config = base_config
         self._allowed_types_cache = None
-        self._ephemeral_port_cache = ServerSettings._global_ephemeral_port
 
     def on_settings_change(self) -> None:
         """Reload settings when LiveServerPlus.sublime-settings updates."""
@@ -129,18 +131,22 @@ class ServerSettings:
 
     @property
     def port(self) -> int:
-        if self._ephemeral_port_cache is not None:
-            return self._ephemeral_port_cache
+        """The configured port, or the remembered random one for "port": 0.
 
-        configured = int(self._config.get('port', DEFAULT_SETTINGS['port']))
-        if configured == 0:
-            if self._ephemeral_port_cache is not None:
-                configured = self._ephemeral_port_cache
-            else:
-                configured = getFreePort(49152, 65535) or 8080
-        self._ephemeral_port_cache = configured
-        ServerSettings._global_ephemeral_port = configured
-        return configured
+        The port actually bound can differ when this one is busy. That is
+        tracked on the running Server, not here, so the next start tries
+        the configured port again.
+        """
+        try:
+            configured = int(self._config.get('port', DEFAULT_SETTINGS['port']))
+        except (TypeError, ValueError):
+            configured = DEFAULT_SETTINGS['port']
+        if configured != 0:
+            return configured
+
+        if ServerSettings._global_ephemeral_port is None:
+            ServerSettings._global_ephemeral_port = getFreePort(49152, 65535) or 8080
+        return ServerSettings._global_ephemeral_port
 
     @property
     def waitTimeMs(self) -> int:
@@ -282,5 +288,4 @@ class ServerSettings:
         return self._allowed_types_cache
 
     def reset_ephemeral_port(self) -> None:
-        self._ephemeral_port_cache = None
         ServerSettings._global_ephemeral_port = None
