@@ -1,8 +1,8 @@
 # liveserverplus_lib/request_handler.py
 """HTTP request handling utilities"""
-import os
 import socket
 import threading
+from urllib.parse import unquote
 import sublime
 
 from .http_utils import HTTPRequest, HTTPResponse, send_error_response, send_options_response
@@ -11,6 +11,7 @@ from .websocket import WebSocketHandler
 from .error_pages import ErrorPages
 from .text_utils import inject_before_tag
 from .file_utils import get_file_info
+from .path_utils import validate_and_secure_path
 from .logging import info, error
 from .connection_manager import ConnectionManager
 from .constants import IGNORED_SOCKET_ERRORS
@@ -148,36 +149,39 @@ class RequestHandler:
             return
             
         # Try to serve file
-        if self.file_server.serveFile(conn, path, self.folders):
+        accepts_gzip = 'gzip' in request.get_header('accept-encoding', '').lower()
+        if self.file_server.serveFile(conn, path, self.folders, accepts_gzip=accepts_gzip):
             return
-            
+
         # Generate 404 page
         self._send404(conn, path)
-        
+
     def _handleHeadRequest(self, conn, request):
-        """Handle HEAD requests - properly check if resource exists"""
+        """Handle HEAD requests: resolve the path as GET does, send headers only."""
         path = request.path
-        
-        # Basic validation for obvious attacks (full validation happens in file_server)
+
+        # Basic validation for obvious attacks (full validation happens below)
         if any(pattern in path for pattern in ['..', '//', '\\\\', '\x00']):
             send_error_response(conn, 400, "Bad Request")
             return
-        
+
         # Default to index.html for root
         if path == '/':
             path = '/index.html'
-            
-        rel_path = path.lstrip('/')
-        
-        # Try to find the resource using centralized file_info
+
+        # Decode and contain the path exactly like a GET. A plain
+        # os.path.join skipped both: encoded names never matched, and on
+        # Windows an absolute "C:/..." path replaced the folder outright.
+        rel_path = unquote(path.lstrip('/'))
+
         file_info = None
         for folder in self.folders:
-            full_path = os.path.join(folder, rel_path)
-            info = get_file_info(full_path)
-            if info:
-                file_info = info
-                break
-        
+            safe_path = validate_and_secure_path(folder, rel_path)
+            if safe_path:
+                file_info = get_file_info(safe_path)
+                if file_info:
+                    break
+
         if not file_info:
             # Send 404 for non-existent resources
             send_error_response(conn, 404)

@@ -54,8 +54,10 @@ class HTTPResponse:
             'X-Frame-Options': 'SAMEORIGIN',
             'Referrer-Policy': 'same-origin'
         })
-        self.headers['Connection'] = 'keep-alive'
-        self.headers['Keep-Alive'] = 'timeout=5, max=100'
+        # Each worker serves one request and then closes the socket, so say
+        # so. Claiming keep-alive invited browsers to reuse a connection
+        # that was already gone.
+        self.headers['Connection'] = 'close'
         return self
         
     def build(self):

@@ -55,10 +55,13 @@ class FileServer:
             return None
         return BufferCache.getInstance().get(file_path)
         
-    def serveFile(self, conn, path, folders):
+    def serveFile(self, conn, path, folders, accepts_gzip=False):
         """
         Main entry point for serving files.
         Returns True if file was served, False otherwise.
+
+        ``accepts_gzip`` says whether the request listed gzip in
+        Accept-Encoding; nothing is compressed otherwise.
         """
         # Vendored preview assets are served from the package, not the
         # user's folders, so they are resolved before anything else.
@@ -70,7 +73,7 @@ class FileServer:
             for folder in folders:
                 index_path = os.path.join(folder, 'index.html')
                 if os.path.isfile(index_path):
-                    return self._serveFile(conn, index_path, 'index.html', folder)
+                    return self._serveFile(conn, index_path, 'index.html', folder, accepts_gzip)
             if path == '/':
                 for folder in folders:
                     if os.path.isdir(folder):
@@ -90,8 +93,8 @@ class FileServer:
                 
             # Check if it's a file
             if os.path.isfile(safe_path):
-                return self._serveFile(conn, safe_path, rel_path, folder)
-                
+                return self._serveFile(conn, safe_path, rel_path, folder, accepts_gzip)
+
         return False
         
     def _serveDirectory(self, conn, dir_path, url_path, root_path):
@@ -198,7 +201,7 @@ class FileServer:
 
         return response.send(conn)
             
-    def _serveFile(self, conn, full_path, rel_path, base_folder):
+    def _serveFile(self, conn, full_path, rel_path, base_folder, accepts_gzip=False):
         """Serve a single file with appropriate handling"""
         if getattr(self.settings, 'logging', False):
             info(f"Serving file: {full_path}")
@@ -225,7 +228,9 @@ class FileServer:
         # a prior session would shadow the disk file.
         cached = self._cachedBufferFor(full_path)
         if cached is not None and is_allowed:
-            return self._sendFileContents(conn, full_path, mime_type, override_bytes=cached)
+            return self._sendFileContents(
+                conn, full_path, mime_type, override_bytes=cached, accepts_gzip=accepts_gzip
+            )
 
         # Get file size for streaming decision
         try:
@@ -237,9 +242,9 @@ class FileServer:
         # Handle different serving methods
         if is_allowed:
             if should_stream and not full_path.lower().endswith(('.html', '.htm')):
-                return self._streamFile(conn, full_path, mime_type)
+                return self._streamFile(conn, full_path, mime_type, accepts_gzip)
             else:
-                return self._sendFileContents(conn, full_path, mime_type)
+                return self._sendFileContents(conn, full_path, mime_type, accepts_gzip=accepts_gzip)
         else:
             # Force download for non-allowed files
             return self._sendAsDownload(conn, full_path, mime_type, file_size)
@@ -261,7 +266,7 @@ class FileServer:
             error(f"Error reading file {file_path}: {e}")
             return None
             
-    def _sendFileContents(self, conn, file_path, mime_type, override_bytes=None):
+    def _sendFileContents(self, conn, file_path, mime_type, override_bytes=None, accepts_gzip=False):
         """Send file contents with optional WebSocket injection.
 
         ``override_bytes`` lets callers bypass the disk read (used when a
@@ -274,7 +279,7 @@ class FileServer:
                 file_size = os.path.getsize(file_path)
                 # Large files should be streamed, not loaded into memory
                 if file_size > LARGE_FILE_THRESHOLD and not file_path.lower().endswith(('.html', '.htm')):
-                    return self._streamFile(conn, file_path, mime_type)
+                    return self._streamFile(conn, file_path, mime_type, accepts_gzip)
             except OSError:
                 pass
 
@@ -291,9 +296,12 @@ class FileServer:
                 info(f"Injecting WebSocket code into {file_path}")
             content = self.websocket_injector(content)
 
-        # Apply compression if enabled and appropriate
+        # gzip only when the client asked for it: browsers always do, but
+        # curl, wget and scripts fetching from the dev server often don't,
+        # and they used to get raw gzip bytes.
         is_compressed = False
-        if getattr(self.settings, 'enableCompression', False) and should_compress_file(file_path, mime_type):
+        compressible = should_compress_file(file_path, mime_type)
+        if accepts_gzip and compressible and getattr(self.settings, 'enableCompression', False):
             try:
                 compressed = compressData(content, mime_type)
                 # Only use compressed version if it's actually smaller
@@ -310,18 +318,20 @@ class FileServer:
             enable_cors=self.settings.corsEnabled,
             is_compressed=is_compressed
         )
-        
+        if compressible:
+            response.set_header('Vary', 'Accept-Encoding')
+
         return response.send(conn)
-        
-    def _streamFile(self, conn, file_path, mime_type):
+
+    def _streamFile(self, conn, file_path, mime_type, accepts_gzip=False):
         """Stream large files without loading into memory"""
         try:
             file_size = os.path.getsize(file_path)
             info(f"Streaming file {file_path} ({file_size} bytes)")
-            
+
             # HTML files need injection, so can't stream
             if file_path.lower().endswith(('.html', '.htm')):
-                return self._sendFileContents(conn, file_path, mime_type)
+                return self._sendFileContents(conn, file_path, mime_type, accepts_gzip=accepts_gzip)
             
             response = HTTPResponse(200)
             response.set_header('Content-Type', mime_type)
